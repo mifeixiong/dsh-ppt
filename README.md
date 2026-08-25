@@ -3,6 +3,10 @@
 **中文** | [English](README.en.md)
 
 <p align="center">
+  <img src="assets/banner.jpeg" alt="DSH PPT Banner" width="100%">
+</p>
+
+<p align="center">
   <img src="https://img.shields.io/github/v/release/yejiming/dsh-ppt?style=flat-square" alt="Version">
   &nbsp;
   <img src="https://img.shields.io/github/stars/yejiming/dsh-ppt?style=flat-square" alt="Stars">
@@ -53,13 +57,6 @@
 dsh plugin --profile web add @yejiming/dsh-ppt
 dsh plugin --profile headless add @yejiming/dsh-ppt
 ```
-
-> 也可以通过 npm / pnpm 安装到本地项目：
-> ```bash
-> npm install @yejiming/dsh-ppt
-> # 或
-> pnpm add @yejiming/dsh-ppt
-> ```
 
 ### 3. 开始创作
 
