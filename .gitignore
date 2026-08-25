@@ -8,6 +8,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 *.tgz
+.*.mjs
+*.tmp
 
 # Internal notes & prompts (not for distribution)
 prompts.md
