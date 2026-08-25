@@ -46,14 +46,20 @@
 
 ### 2. 快速安装
 
-在终端执行以下命令即可完成插件安装：
+在终端执行以下命令直接从 npm 安装插件：
 
 ```bash
-pnpm install
-pnpm build
-dsh plugin --profile web add .
-dsh plugin --profile headless add .
+# 通过 DSH 插件管理器直接安装
+dsh plugin --profile web add @yejiming/dsh-ppt
+dsh plugin --profile headless add @yejiming/dsh-ppt
 ```
+
+> 也可以通过 npm / pnpm 安装到本地项目：
+> ```bash
+> npm install @yejiming/dsh-ppt
+> # 或
+> pnpm add @yejiming/dsh-ppt
+> ```
 
 ### 3. 开始创作
 

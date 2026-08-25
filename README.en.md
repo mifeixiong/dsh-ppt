@@ -46,14 +46,20 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 ### 2. Installation
 
-Run the following commands in your terminal to install the plugin:
+Run the following commands to install the plugin directly from npm:
 
 ```bash
-pnpm install
-pnpm build
-dsh plugin --profile web add .
-dsh plugin --profile headless add .
+# Install directly via DSH plugin manager
+dsh plugin --profile web add @yejiming/dsh-ppt
+dsh plugin --profile headless add @yejiming/dsh-ppt
 ```
+
+> You can also install it to a local project via npm / pnpm:
+> ```bash
+> npm install @yejiming/dsh-ppt
+> # or
+> pnpm add @yejiming/dsh-ppt
+> ```
 
 ### 3. Start Creating
 
