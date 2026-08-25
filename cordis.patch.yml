@@ -1,0 +1,33 @@
+# Host-plane PPT runtime. Model-facing tools are mounted only by the `ppt` preset.
+- insert:
+    # Headless 0.1.1-rc.2 has no preset roster. The entry-level injection makes
+    # this row activate only when the headless launcher supplies its startup
+    # service; Web keeps using the preset roster already owned by its bundle.
+    - id: ppt-headless-agent-presets
+      name: '@deepseek-ai/dsh-agent-presets'
+      inject: [headlessStartup]
+      disabled: !!js >-
+        !(process.argv.includes('--profile=headless') ||
+        process.argv.some((value, index) => value === 'headless' &&
+        process.argv[index - 1] === '--profile'))
+      config:
+        default: ppt
+    - id: ppt
+      name: '@yejiming/dsh-ppt'
+
+# Disable the stock headless runner when present, then add a PPT-aware runner.
+# On Web the inserted runner waits for the absent headless-only service and
+# DSH's native Web preset flow remains.
+- id: headless-runner
+  disabled: true
+- insert:
+    - id: ppt-headless-runner
+      name: '@yejiming/dsh-ppt/headless'
+      inject: [headlessStartup]
+      disabled: !!js >-
+        !(process.argv.includes('--profile=headless') ||
+        process.argv.some((value, index) => value === 'headless' &&
+        process.argv[index - 1] === '--profile'))
+      config:
+        task: !!js ctx.headlessStartup.task
+        presetId: ppt

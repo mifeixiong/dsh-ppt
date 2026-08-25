@@ -1,0 +1,34 @@
+{
+  "$schema": "https://dsh.community/schemas/dsh-plugin-0.15.json",
+  "manifestVersion": "0.15",
+  "id": "io.github.yejiming.dsh-ppt",
+  "name": "DSH PPT",
+  "version": "0.0.1",
+  "facets": {
+    "host": {
+      "entry": "lib/index.mjs",
+      "apiVersion": "v1alpha1"
+    }
+  },
+  "requires": {
+    "contracts": [],
+    "services": []
+  },
+  "permissions": [],
+  "contributes": {
+    "commands": [],
+    "panels": []
+  },
+  "subscriptions": [],
+  "license": "MIT",
+  "source": {
+    "repository": "https://github.com/yejiming/dsh-ppt"
+  },
+  "overrides": [
+    {
+      "target": "package.json#dsh.bundle",
+      "kind": "native",
+      "description": "The Cordis bundle provides host-plane PPT runtimes while the preset owns model-facing tools"
+    }
+  ]
+}

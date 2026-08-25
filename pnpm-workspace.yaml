@@ -1,0 +1,14 @@
+packages:
+  - .
+
+overrides:
+  hono: 4.13.3
+  tldts: 7.4.10
+  tldts-core: 7.4.10
+
+allowBuilds:
+  "@deepseek-ai/dsh-subprocess-local": true
+  "@google/genai": true
+  koffi: true
+  node-pty: true
+  protobufjs: true
