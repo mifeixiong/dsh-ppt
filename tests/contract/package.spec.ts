@@ -24,10 +24,26 @@ describe('package contract', () => {
     }
   })
 
+  it('uses the DSH host sharp singleton instead of publishing a private native copy', async () => {
+    const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as {
+      dependencies: Record<string, string>
+      devDependencies: Record<string, string>
+      peerDependencies: Record<string, string>
+      peerDependenciesMeta: Record<string, { optional?: boolean }>
+    }
+    expect(manifest.dependencies).not.toHaveProperty('sharp')
+    expect(manifest.devDependencies.sharp).toBe('0.35.4')
+    expect(manifest.peerDependencies.sharp).toBe('^0.35.3')
+    expect(manifest.peerDependenciesMeta.sharp).toEqual({ optional: true })
+  })
+
   it('ships a valid host entry and a headless-only preset bridge', async () => {
     const plugin = JSON.parse(await readFile(new URL('../../dsh-plugin.json', import.meta.url), 'utf8')) as {
+      version: string
       facets: { host: { entry: string } }
     }
+    const manifest = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string }
+    expect(plugin.version).toBe(manifest.version)
     const patch = await readFile(new URL('../../cordis.patch.yml', import.meta.url), 'utf8')
     expect(plugin.facets.host.entry).toBe('lib/index.mjs')
     expect(patch).toContain("name: '@deepseek-ai/dsh-agent-presets'")
