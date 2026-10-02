@@ -5,7 +5,7 @@ import type {} from './index.ts'
 import { PptError } from './errors.ts'
 import { buildFontCatalog, discoverRegisteredFonts } from './fonts.ts'
 import { createHtmlDeck } from './html.ts'
-import { writePptOutline } from './outline.ts'
+import { writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import { createPptx } from './pptx.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
@@ -429,6 +429,48 @@ function pptFontsTool(ctx: Context) {
   })
 }
 
+// The outline tool's authority is a zod schema; these declarations only give the
+// model the field skeleton. They mirror it exactly where a wrong guess is silent
+// (field names and enumerations) and stay open where the discriminated union
+// carries per-kind fields.
+const SLIDE_CONTENT_ITEM = {
+  type: 'object',
+  additionalProperties: true,
+  description: [
+    'One content item, discriminated by kind.',
+    'point: {kind,text,label?,group?,level?:1|2,emphasis?:boolean}.',
+    'data: {kind,label,value,unit?,source?,note?,group?,emphasis?}.',
+    'image: {kind,role,intent,query? xor asset?,caption?,group?}.',
+    'chart: {kind,chart_type,subject,data_ref?,takeaway,group?}.',
+    'note: {kind,purpose,text}.',
+  ].join(' '),
+} as const
+
+const SLIDE_STYLE = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    layout: { type: 'string', required: true, enum: SLIDE_LAYOUTS, description: 'Page layout; it must be compatible with the slide type.' },
+    background: { type: 'string', required: true, enum: ['light', 'dark', 'accent', 'image'], description: 'image requires exactly one background image item and vice versa.' },
+    accent: { type: 'string', required: true, description: 'Accent as #RRGGBB hex; normalized to uppercase.' },
+    title_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts catalog; ppt_outline substitutes a deterministic fallback and reports it.' },
+    body_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts catalog; ppt_outline substitutes a deterministic fallback and reports it.' },
+    visual_direction: { type: 'string', required: true, description: '1..200 code points describing the intended visual result of this page.' },
+  },
+} as const
+
+const SLIDE = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    page: { type: 'integer', required: true, description: '1-based slide position; it must equal the index in slides + 1.' },
+    type: { type: 'string', required: true, enum: SLIDE_TYPES, description: 'Slide role; it constrains the layout, the visible item count, and whether visible content is required.' },
+    title: { type: 'string', required: true, description: '1..80 code points without newlines or HTML; 1..60 for every type except cover.' },
+    content: { type: 'array', required: true, items: SLIDE_CONTENT_ITEM, description: '1..12 items; at most 8 visible plus at most 2 notes; cover, section, and ending may carry no visible item.' },
+    style: { ...SLIDE_STYLE, required: true },
+  },
+} as const
+
 function outlineTool(ctx: Context) {
   return defineTool({
     name: 'ppt_outline',
@@ -436,8 +478,8 @@ function outlineTool(ctx: Context) {
     parameters: {
       artifact_title: { type: 'string', required: true, description: 'Title used only to allocate the artifact directory slug.' },
       slides: {
-        type: 'array', required: true, items: { type: 'object', additionalProperties: true },
-        description: 'Ordered 1..60 slide objects. Each must contain exactly page, type, title, content, and style.',
+        type: 'array', required: true, items: SLIDE,
+        description: 'Ordered 1..60 slide objects. Each must contain exactly page, type, title, content, and style; unknown slide fields are rejected.',
       },
       art_direction: {
         type: 'object', additionalProperties: true,

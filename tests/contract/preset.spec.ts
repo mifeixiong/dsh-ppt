@@ -79,8 +79,11 @@ async function mintScope(ctx: Context, key: object): Promise<Scope> {
 }
 
 describe('PPT preset contract', () => {
-  it('mounts only the five native tool packages and the package tool entry', async () => {
-    const source = await readFile(new URL('../../preset/ppt/agent.cordis.yml', import.meta.url), 'utf8')
+  it('declares the PPT preset as a composition row and mounts only the five native tool packages plus the package tool entry', async () => {
+    const source = await readFile(new URL('../../cordis.patch.yml', import.meta.url), 'utf8')
+    expect(source).toContain("id: preset-ppt")
+    expect(source).toContain("name: '@deepseek-ai/dsh-agent-preset'")
+    expect(source).toMatch(/id: preset-ppt[\s\S]*?id: ppt[\s\S]*?order: 5/u)
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-fs'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-bash'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-ask-user'")
@@ -104,6 +107,9 @@ describe('PPT preset contract', () => {
     const pptImage = fixture.getDefinitions().get('ppt_image') as { parameters?: { properties?: Record<string, unknown> } }
     const pptFonts = fixture.getDefinitions().get('ppt_fonts') as { parameters?: { properties?: Record<string, unknown> } }
     expect(outline.parameters?.properties).toHaveProperty('art_direction')
+    const slides = (outline.parameters?.properties as { slides?: { items?: { properties?: Record<string, unknown>; additionalProperties?: boolean } } }).slides
+    expect(slides?.items?.additionalProperties).toBe(false)
+    expect(Object.keys(slides?.items?.properties ?? {}).sort()).toEqual(['content', 'page', 'style', 'title', 'type'])
     expect(html.parameters?.properties).toEqual(expect.objectContaining({ design_plan_path: expect.any(Object), strict_design: expect.any(Object) }))
     expect(pptImage.parameters?.properties).toEqual(expect.objectContaining({
       pptx_path: expect.any(Object), backend: expect.any(Object), force: expect.any(Object), screen_index: expect.any(Object), refresh_quality: expect.any(Object),

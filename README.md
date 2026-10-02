@@ -42,7 +42,7 @@
 
 ### 1. 运行环境准备
 
-- **DeepSeek Harness**（DSH 运行时环境）
+- **DeepSeek Harness 0.2.0-rc.2 或更高版本**（本插件的 DSH 依赖声明为 `^0.2.0-rc.2`，与运行时版本一致；版本不匹配时插件会被拒绝加载）
 - 电脑已安装以下任意办公软件（用于高保真渲染与视觉质检）：
   - **macOS**：Keynote 或 Microsoft PowerPoint
   - **Windows**：Microsoft PowerPoint

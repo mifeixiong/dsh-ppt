@@ -42,7 +42,7 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 ### 1. Prerequisites
 
-- **DeepSeek Harness** (DSH runtime environment)
+- **DeepSeek Harness 0.2.0-rc.2 or newer** (this plugin declares the DSH peer range `^0.2.0-rc.2`; a mismatched runtime refuses to load it)
 - Any of the following office software installed locally (for high-fidelity rendering and visual review):
   - **macOS**: Keynote or Microsoft PowerPoint
   - **Windows**: Microsoft PowerPoint
