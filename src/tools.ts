@@ -697,6 +697,18 @@ function hostScopeOf(ctx: Context): object | undefined {
   return undefined
 }
 
+/**
+ * Report a tool-surface warning through the host logger when the plugin has
+ * one. A preset fiber is not guaranteed to hold the logging service (and a
+ * source-linked plugin may load a second cordis copy), so fall back instead of
+ * making a diagnostic path depend on service availability.
+ */
+function warn(ctx: Context, message: string): void {
+  const logger = (ctx as { logger?: { warn?: (text: string) => void } }).logger
+  if (typeof logger?.warn === 'function') logger.warn(message)
+  else console.warn(`[dsh-ppt] ${message}`)
+}
+
 /** Register the package-owned surface. Individual executors replace these stubs as their tasks land. */
 export function apply(ctx: Context): void {
   // This entry is the final row in the standing preset scope. Snapshot and
@@ -750,21 +762,45 @@ export function apply(ctx: Context): void {
   // Cordis applies registrations and restrictions as ordered effects after a
   // plugin's synchronous apply() returns. Audit in one final effect so the
   // check sees the materialized PPT surface instead of the pre-effect globals.
+  //
+  // The audit is deliberately diagnostic-only. It used to throw
+  // PptError('PPT_CAPABILITY_UNAVAILABLE') when a tool outside this preset
+  // became visible, and the 'tools/change' path re-runs it from a
+  // queueMicrotask. Tools registered *after* this preset by plugins the host
+  // mounts later (for example DSH Desktop's office composition registering
+  // load_workspace_dependencies, and read_image from its attachment service)
+  // legitimately appear in the same view, so the divergence is expected rather
+  // than a preset defect. A throw from that microtask is an uncaught exception:
+  // DSH's fail-loud handler answers it by disposing the root cordis fiber,
+  // which kills the host mid-boot with INACTIVE_EFFECT and the startup dialog
+  // "The application could not start or stopped unexpectedly.". The audit
+  // therefore reports divergence through ctx.pptRuntime.recordToolSurface()
+  // plus a named warning instead of throwing; the preset's own lock-down stays
+  // where it belongs, in ctx.tools.restrict() above, which denies only the
+  // unexpected tools inherited at apply() time.
   ctx.effect(function* () {
     let active = true
     const audit = () => {
       if (!active) return
       const scope = hostScopeOf(ctx)
+      // An unscoped context cannot be audited; report nothing rather than
+      // reporting a deliberately empty surface as a defect.
       if (scope === undefined) {
-        throw new PptError('PPT_CAPABILITY_UNAVAILABLE', 'PPT preset tools require a scoped DSH context')
+        warn(ctx, 'PPT preset tools require a scoped DSH context; the tool-surface audit was skipped')
+        return
       }
       const visible = ctx.tools.schemas(scope).map(item => item.name).sort()
-      const remainingUnexpected = visible.filter(toolName => !allow.has(toolName))
-      if (remainingUnexpected.length > 0) {
-        throw new PptError('PPT_CAPABILITY_UNAVAILABLE', `PPT preset exposes unexpected tools: ${remainingUnexpected.join(', ')}`)
-      }
+      const unexpected = visible.filter(toolName => !allow.has(toolName))
       const missing = PPT_MODE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
-      ctx.pptRuntime.recordToolSurface({ visible, missing, unexpected: remainingUnexpected })
+      ctx.pptRuntime.recordToolSurface({ visible, missing, unexpected })
+      if (unexpected.length > 0) {
+        // Other plugins may mount after this preset, so warn and keep the
+        // preset's surface usable instead of aborting the host.
+        warn(ctx, `PPT preset sees ${unexpected.length} tool(s) registered by other plugins: ${unexpected.join(', ')}`)
+      }
+      if (missing.length > 0) {
+        warn(ctx, `PPT preset is missing ${missing.length} expected tool(s): ${missing.join(', ')}`)
+      }
     }
 
     audit()
@@ -775,7 +811,14 @@ export function apply(ctx: Context): void {
       queueMicrotask(() => {
         if (!active) return
         scheduled = false
-        audit()
+        // Last-resort guard: nothing thrown by the audit may escape into the
+        // host's uncaught-exception path (see the note above).
+        try {
+          audit()
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+          warn(ctx, `PPT tool-surface audit failed: ${message}`)
+        }
       })
     })
     yield () => {

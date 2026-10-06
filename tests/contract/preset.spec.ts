@@ -7,18 +7,24 @@ import { apply as applyTools } from '../../src/tools.ts'
 import { assertSupportedPlatform } from '../../src/index.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_NATIVE_TOOL_NAMES } from '../../src/schemas.ts'
 
-function toolContext(native = [...PPT_NATIVE_TOOL_NAMES, 'glob']) {
+interface ToolSurfaceRecord { visible: string[]; missing: string[]; unexpected: string[] }
+
+function toolContext(native = [...PPT_NATIVE_TOOL_NAMES, 'glob'], options: { scoped?: boolean; logger?: boolean } = {}) {
+  const { scoped = true, logger = true } = options
   const definitions = new Map(native.map(name => [name, { name }]))
   const denied = new Set<string>()
   const scopeSymbol = Symbol('dsh.scope')
   const scopeKey = { id: 'ppt-contract-scope' }
   let recorded: unknown
   let recordCount = 0
+  const warnings: string[] = []
+  const errors: string[] = []
   let preExecute: ((exec: { name: string; arguments: unknown }, next: () => Promise<{ kind: 'allow' }>) => Promise<{ kind: string; reason?: string }>) | undefined
   let toolChange: (() => void) | undefined
   const effectDisposers: Array<() => void> = []
   const context = {
-    [scopeSymbol]: scopeKey,
+    ...(scoped ? { [scopeSymbol]: scopeKey } : {}),
+    ...(logger ? { logger: { warn: (text: string) => warnings.push(text), error: (text: string) => errors.push(text) } } : {}),
     effect(factory: () => Generator<() => void>) {
       const effect = factory()
       const yielded = effect.next()
@@ -50,10 +56,42 @@ function toolContext(native = [...PPT_NATIVE_TOOL_NAMES, 'glob']) {
     },
   }
   return {
-    context, getRecorded: () => recorded, getRecordCount: () => recordCount,
+    context, getRecorded: () => recorded as ToolSurfaceRecord | undefined, getRecordCount: () => recordCount,
+    getWarnings: () => [...warnings], getErrors: () => [...errors], getDenied: () => [...denied].sort(),
     getDefinitions: () => definitions, getPreExecute: () => preExecute,
+    // Another plugin mounted after this preset registering its own tool.
+    addExternalTool: (name: string) => { definitions.set(name, { name }) },
     triggerToolChange: () => toolChange?.(),
     disposeEffects: () => { for (const dispose of effectDisposers.reverse()) dispose() },
+  }
+}
+
+/** Let every queued microtask (dsh-ppt's deferred audit) and their follow-ups run. */
+async function settleMicrotasks(rounds = 4): Promise<void> {
+  for (let round = 0; round < rounds; round += 1) await Promise.resolve()
+}
+
+/**
+ * Turn an escaping async exception into an assertion failure instead of a dead
+ * vitest worker. The listener is process-global, so the caller must remove it.
+ */
+function captureEscapingExceptions(): { captured: unknown[]; stop: () => void } {
+  const captured: unknown[] = []
+  const listeners = {
+    uncaughtException: (error: unknown) => { captured.push(error) },
+    unhandledRejection: (reason: unknown) => { captured.push(reason) },
+  }
+  // The two events have unrelated listener signatures; the fixture only records.
+  const on = process.on.bind(process) as (event: string, listener: (value: unknown) => void) => void
+  const off = process.off.bind(process) as (event: string, listener: (value: unknown) => void) => void
+  on('uncaughtException', listeners.uncaughtException)
+  on('unhandledRejection', listeners.unhandledRejection)
+  return {
+    captured,
+    stop: () => {
+      off('uncaughtException', listeners.uncaughtException)
+      off('unhandledRejection', listeners.unhandledRejection)
+    },
   }
 }
 
@@ -174,6 +212,61 @@ describe('PPT preset contract', () => {
     await Promise.resolve()
 
     expect(fixture.getRecordCount()).toBe(1)
+  })
+
+  it('reports a tool registered by a later plugin as a diagnostic instead of throwing from the deferred audit', async () => {
+    const fixture = toolContext()
+    applyTools(fixture.context as never)
+    const firstRecord = fixture.getRecorded()
+    expect(firstRecord).toMatchObject({ missing: [], unexpected: [] })
+
+    // DSH Desktop mounts its office composition after the PPT preset, so
+    // load_workspace_dependencies (and read_image) appear here. That arrival is
+    // outside the preset's control and must not abort the host.
+    fixture.addExternalTool('load_workspace_dependencies')
+    const escaping = captureEscapingExceptions()
+    try {
+      fixture.triggerToolChange()
+      await settleMicrotasks()
+    } finally {
+      escaping.stop()
+    }
+
+    expect(escaping.captured).toEqual([])
+    expect(fixture.getErrors()).toEqual([])
+    const recorded = fixture.getRecorded()
+    expect(recorded?.unexpected).toEqual(['load_workspace_dependencies'])
+    expect(recorded?.missing).toEqual([])
+    expect(recorded?.visible).toContain('load_workspace_dependencies')
+    expect(recorded?.visible).toContain('ppt_outline')
+    expect(fixture.getWarnings().join(' | ')).toContain('load_workspace_dependencies')
+  })
+
+  it('reports an unexpected tool inherited at apply() time and still denies it', () => {
+    const fixture = toolContext([...PPT_NATIVE_TOOL_NAMES, 'glob', 'ssh_exec'])
+    applyTools(fixture.context as never)
+
+    // The preset still locks down what it inherited, but reports the divergence
+    // as a diagnostic instead of failing to mount.
+    expect(fixture.getDenied()).toEqual(['glob', 'ssh_exec'])
+    const recorded = fixture.getRecorded()
+    expect(recorded?.visible ?? []).not.toContain('ssh_exec')
+    expect(recorded?.missing).toEqual([])
+    expect(recorded?.unexpected).toEqual([])
+  })
+
+  it('skips the audit without throwing when the context carries no scope', async () => {
+    const fixture = toolContext([...PPT_NATIVE_TOOL_NAMES, 'glob'], { scoped: false, logger: false })
+    expect(() => applyTools(fixture.context as never)).not.toThrow()
+    const escaping = captureEscapingExceptions()
+    try {
+      fixture.triggerToolChange()
+      await settleMicrotasks()
+    } finally {
+      escaping.stop()
+    }
+    expect(escaping.captured).toEqual([])
+    expect(fixture.getRecorded()).toBeUndefined()
   })
 
   it('requires approval before native office automation but not LibreOffice', async () => {
