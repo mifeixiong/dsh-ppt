@@ -22,7 +22,7 @@
 
 <p align="center">
 
-[Highlights](#highlights) · [Quick Start](#quick-start) · [Use Cases](#use-cases) · [Output Files](#output-files) · [FAQ](#faq) · [License](#license)
+[Highlights](#highlights) · [Quick Start](#quick-start) · [Use Cases](#use-cases) · [Output Files](#output-files) · [Multi-Agent Workflow](#multi-agent-workflow) · [FAQ](#faq) · [License](#license)
 
 </p>
 
@@ -88,6 +88,17 @@ Each completed task creates a standalone folder inside `ppt-output/`:
 - 📄 **`deck.pptx`**: The final native PPT file. Double-click to open in PowerPoint, Keynote, or WPS for presentation or direct editing.
 - 🖼️ **`preview/`**: High-resolution image previews of each slide, convenient for quick mobile browsing and sharing.
 - 📁 **`assets/`**：Image assets and charts used in the deck, complete with attribution and license tracking.
+
+## Multi-Agent Workflow
+
+A deck can also be produced by several agents working in parallel: one scouting images, one gathering source material, one authoring the frame (outline + Art Direction), and a lead agent that integrates, verifies, and delivers the PPTX. The plugin supplies a fixed 20-tool surface and a strictly validated artifact contract; the split itself is arranged at the session layer.
+
+- 🔍 **Image scout**: writes image candidates into a candidate pool only, never into the artifact directory. Searching and freezing are separate steps — freezing belongs to the lead agent.
+- 📚 **Research agent**: writes sourced notes and structured data points only.
+- 🧭 **Frame agent**: produces the outline payload and Art Direction only; it creates no deliverable files.
+- 🎯 **Lead agent**: exclusively owns `ppt_outline` / `html_create` / `ppt_create` / `ppt_image`, and follows the gate order `outline → html → pptx → re-render → per-page review → finalize`.
+
+Roles, inputs and outputs, write boundaries (who writes `outline.json`, who writes `deck.html`, who only produces a candidate list), dependency order, and failure fallbacks — including the real case of "image sources unavailable → fall back to a zero-external-link vector design" — are documented in **[Multi-Agent Workflow](docs/agent-workflow.md)** (the document is written in Chinese).
 
 ## FAQ
 

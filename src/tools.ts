@@ -5,6 +5,7 @@ import type {} from './index.ts'
 import { PptError } from './errors.ts'
 import { buildFontCatalog, discoverRegisteredFonts } from './fonts.ts'
 import { createHtmlDeck } from './html.ts'
+import { describeImageSearchDegradation } from './image-search.ts'
 import { writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import { createPptx } from './pptx.ts'
@@ -376,7 +377,7 @@ function pythonTool(ctx: Context) {
 function imageSearchTool(ctx: Context) {
   return defineTool({
     name: 'image_search',
-    description: 'Search free anonymous Openverse results with automatic Wikimedia Commons fallback. No API key or provider configuration is required.',
+    description: 'Search free anonymous Openverse results with automatic Wikimedia Commons fallback. No API key or provider configuration is required. When both providers are unreachable the call still succeeds with zero results and a degraded status rather than failing, so treat an empty result set as "no artwork available" and fall back to a self-contained vector layout instead of retrying.',
     parameters: {
       query: { type: 'string', required: true, description: 'Image search query containing 1..160 Unicode code points.' },
       count: { type: 'integer', description: 'Requested candidate count from 1 through 12. Defaults to 8.' },
@@ -387,7 +388,13 @@ function imageSearchTool(ctx: Context) {
     },
     output: {
       schema: IMAGE_SEARCH_OUTPUT,
-      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+      render: (_args, value) => {
+        // The result schema is closed, so the actionable half of a degraded search
+        // rides along in the rendered text rather than as an extra field.
+        const degradation = describeImageSearchDegradation(value)
+        const annotated = degradation.status === 'ok' ? value : { ...value, degradation }
+        return [{ type: 'text', text: JSON.stringify(annotated) }]
+      },
     },
     async execute(args, exec) {
       return ctx.pptRuntime.imageSearch.search(args.query, args.count, args.orientation, exec.signal)
@@ -501,13 +508,29 @@ function outlineTool(ctx: Context) {
   })
 }
 
+/**
+ * ppt_outline always writes outline.json and design-plan.json side by side, so a
+ * caller that supplies only the outline path still lands in the directed
+ * workflow. Inferring the sibling plan removes a silent failure mode: omitting
+ * the plan argument would otherwise drop the run into legacy mode without a word.
+ */
+async function inferDesignPlanPath(workspace: string, outlinePath: string): Promise<string | undefined> {
+  const candidate = join(dirname(outlinePath), 'design-plan.json')
+  try {
+    await resolveWorkspacePath(workspace, candidate, { mustExist: true, kind: 'file' })
+  } catch {
+    return undefined
+  }
+  return candidate
+}
+
 function htmlTool(ctx: Context) {
   return defineTool({
     name: 'html_create',
-    description: 'Validate constrained static 1280x720 slide HTML, atomically save deck.html, and render one PNG preview per page.',
+    description: 'Pipeline step 2 of 5. Validate constrained static 1280x720 slide HTML, atomically save deck.html, and render one PNG preview per page.',
     parameters: {
       outline_path: { type: 'string', required: true, description: 'Workspace-relative outline.json path returned by ppt_outline.' },
-      design_plan_path: { type: 'string', description: 'Workspace-relative design-plan.json path returned by ppt_outline. Required by the PPT persona directed workflow.' },
+      design_plan_path: { type: 'string', description: 'Workspace-relative design-plan.json path returned by ppt_outline. Optional: when omitted, the design-plan.json sitting next to outline_path is picked up automatically.' },
       strict_design: { type: 'boolean', description: 'Promote deterministic Art Direction heuristic warnings to blocking HTML validation errors.' },
       html: { type: 'string', required: true, description: 'Complete static HTML document with .ppt-slide pages and convertible data-ppt leaves.' },
     },

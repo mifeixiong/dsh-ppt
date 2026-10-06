@@ -6,7 +6,7 @@ import { artDirectionFindings, validateArtDirection } from './art-direction.ts'
 import type { ArtDirection } from './art-direction.ts'
 import { atomicWriteJson } from './atomic.ts'
 import { PptError } from './errors.ts'
-import { FONT_REGISTRY, resolveRegisteredFont, type DiscoveredFont } from './fonts.ts'
+import { resolveRegisteredFont, type DiscoveredFont } from './fonts.ts'
 import { workspaceRelative } from './paths.ts'
 
 export const SLIDE_TYPES = ['cover', 'agenda', 'section', 'content', 'comparison', 'timeline', 'process', 'data', 'quote', 'summary', 'ending'] as const
@@ -16,7 +16,6 @@ export const SLIDE_LAYOUTS = [
   'process-vertical', 'chart-focus', 'quote-focus', 'full-bleed', 'closing',
 ] as const
 
-const FONT_NAMES = FONT_REGISTRY.map(item => item.name) as [string, ...string[]]
 const noMarkup = (value: string): boolean => !/[\r\n]/u.test(value) && !/<\/?[a-z][^>]*>/iu.test(value)
 
 function cleanString(max: number, multiline = false) {
@@ -74,7 +73,10 @@ export const OutlineContentItemSchema = z.discriminatedUnion('kind', [Point, Dat
 const Style = z.strictObject({
   layout: z.enum(SLIDE_LAYOUTS), background: z.enum(['light', 'dark', 'accent', 'image']),
   accent: z.string().regex(/^#[0-9A-Fa-f]{6}$/u).transform(value => value.toUpperCase()),
-  title_font: z.enum(FONT_NAMES), body_font: z.enum(FONT_NAMES), visual_direction: cleanString(200),
+  // Registry membership is enforced later by resolveFontPlan, which substitutes
+  // a deterministic fallback and reports it. Keeping the schema open means a
+  // registry newer than the running host degrades instead of failing outright.
+  title_font: cleanString(80), body_font: cleanString(80), visual_direction: cleanString(200),
 })
 
 const Slide = z.strictObject({

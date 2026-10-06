@@ -255,6 +255,36 @@ export interface ResolvedFont {
   warning?: string
 }
 
+/**
+ * A font name this build does not know about — for example a deck authored
+ * against a newer registry than the one the running host has loaded — must not
+ * abort the whole pipeline. Fall back in registry order so the outcome stays
+ * deterministic, and leave a warning the caller can surface.
+ */
+function resolveUnregisteredFont(
+  name: string,
+  text: string,
+  discovered: readonly DiscoveredFont[],
+  platform: NodeJS.Platform,
+): ResolvedFont {
+  const supported = supportedPlatform(platform)
+  for (const candidate of FONT_REGISTRY) {
+    if (!candidate.platforms.includes(supported)) continue
+    const font = discovered.find(item => item.name === candidate.name && supportsText(item, text))
+    if (font !== undefined) {
+      return {
+        requested: name,
+        resolved: font,
+        fallback: true,
+        warning: `font ${name} is not registered in this build; replaced with ${supported} fallback ${candidate.name}`,
+      }
+    }
+  }
+  throw new PptError('PPT_DEPENDENCY_MISSING', `no installed approved font covers the requested text for ${name}`, {
+    details: { requested: name, platform: supported },
+  })
+}
+
 export function resolveRegisteredFont(
   name: string,
   text: string,
@@ -262,7 +292,7 @@ export function resolveRegisteredFont(
   platform: NodeJS.Platform = process.platform,
 ): ResolvedFont {
   const requested = registeredFont(name)
-  if (requested === undefined) throw new PptError('PPT_OUTLINE_INVALID', `font is not registered: ${name}`)
+  if (requested === undefined) return resolveUnregisteredFont(name, text, discovered, platform)
   const candidates = fontFallbackCandidates(requested.name, text, platform)
   for (const candidate of candidates) {
     const font = discovered.find(item => item.name === candidate && supportsText(item, text))

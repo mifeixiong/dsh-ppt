@@ -164,12 +164,8 @@ export declare const PptOutlineSchema: z.ZodArray<z.ZodObject<{
             dark: "dark";
         }>;
         accent: z.ZodPipe<z.ZodString, z.ZodTransform<string, string>>;
-        title_font: z.ZodEnum<{
-            [x: string]: string;
-        }>;
-        body_font: z.ZodEnum<{
-            [x: string]: string;
-        }>;
+        title_font: z.ZodPipe<z.ZodPipe<z.ZodString, z.ZodTransform<string, string>>, z.ZodString>;
+        body_font: z.ZodPipe<z.ZodPipe<z.ZodString, z.ZodTransform<string, string>>, z.ZodString>;
         visual_direction: z.ZodPipe<z.ZodPipe<z.ZodString, z.ZodTransform<string, string>>, z.ZodString>;
     }, z.core.$strict>;
 }, z.core.$strict>>;

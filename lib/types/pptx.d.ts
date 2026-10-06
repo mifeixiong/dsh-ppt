@@ -1,5 +1,6 @@
 import type { BrowserRuntime } from './browser.ts';
 import type { SessionOwner } from './session-resources.ts';
+import { type SlideTransitionPlan } from './transitions.ts';
 export type PptFallbackMode = 'reject' | 'rasterize-element';
 export interface RasterizedElementRecord {
     page: number;
@@ -21,4 +22,4 @@ export interface PptxPackageInspection {
     entries: string[];
 }
 export declare function inspectPptxPackage(data: Uint8Array, expectedPages: number): PptxPackageInspection;
-export declare function createPptx(browser: BrowserRuntime, owner: SessionOwner, workspace: string, htmlPathInput: string, outlinePathInput: string, outputPathInput: string, fallbackMode?: PptFallbackMode, signal?: AbortSignal): Promise<PptCreateResult>;
+export declare function createPptx(browser: BrowserRuntime, owner: SessionOwner, workspace: string, htmlPathInput: string, outlinePathInput: string, outputPathInput: string, fallbackMode?: PptFallbackMode, signal?: AbortSignal, transitions?: SlideTransitionPlan): Promise<PptCreateResult>;
