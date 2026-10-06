@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { access, readFile, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
-import { Window } from 'happy-dom'
 import { atomicWriteJson, atomicWriteText } from './atomic.ts'
 import { ART_ROLES, artDirectionFindings, type ArtDirection, type DesignFinding, validateArtDirection } from './art-direction.ts'
 import type { BrowserRuntime } from './browser.ts'
@@ -58,6 +57,9 @@ export async function validateDeckHtmlSource(
   strictDesign = false,
 ): Promise<{ fonts: string[]; primaryFonts: string[]; unsupported: string[]; designFindings: DesignFinding[] }> {
   if (Buffer.byteLength(html) > 5 * 1024 * 1024) throw new PptError('PPT_RESOURCE_LIMIT', 'HTML source exceeds 5 MiB')
+  // Loaded on demand: the DOM implementation is a large module graph and this is
+  // the only consumer, so the plugin entry must not pull it during host startup.
+  const { Window } = await import('happy-dom')
   const domWindow = new Window()
   domWindow.document.write(html)
   // happy-dom types its element queries by tag-name map and rejects the standard
