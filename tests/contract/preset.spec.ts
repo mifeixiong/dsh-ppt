@@ -79,18 +79,22 @@ async function mintScope(ctx: Context, key: object): Promise<Scope> {
 }
 
 describe('PPT preset contract', () => {
-  it('declares the PPT preset as a composition row and mounts only the five native tool packages plus the package tool entry', async () => {
+  it('declares the PPT preset as a composition row and mounts the native tool packages plus the package tool entry', async () => {
     const source = await readFile(new URL('../../cordis.patch.yml', import.meta.url), 'utf8')
     expect(source).toContain("id: preset-ppt")
     expect(source).toContain("name: '@deepseek-ai/dsh-agent-preset'")
     expect(source).toMatch(/id: preset-ppt[\s\S]*?id: ppt[\s\S]*?order: 5/u)
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-fs'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-bash'")
+    expect(source).toContain("name: '@deepseek-ai/dsh-tool-pwsh'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-ask-user'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-todo'")
     expect(source).toContain("name: '@deepseek-ai/dsh-tool-web'")
     expect(source).toContain("name: '@yejiming/dsh-ppt/tools'")
-    expect(source).not.toMatch(/dsh-tool-(?:goal|jobs|skill|subagent|fs-search)/)
+    expect(source).not.toMatch(/dsh-tool-(?:goal|jobs|skill|subagent|fs-search)/u)
+    // The shell tool is a platform split: bash off on Windows, pwsh on only Windows.
+    expect(source).toMatch(/id: tool-bash[\s\S]*?disabled: !!js process\.platform === 'win32'/u)
+    expect(source).toMatch(/id: tool-pwsh[\s\S]*?disabled: !!js process\.platform !== 'win32'/u)
     expect(source).toContain('mode: native')
     expect(source).toContain('fetch: false')
     expect(source).toContain('allowParallelInProgress: false')

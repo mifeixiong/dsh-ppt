@@ -46,18 +46,20 @@ describe('PPT preset row configuration', () => {
   const preset = rows.find(row => row.id === 'preset-ppt')
   const registry = rows.find(row => row.id === 'ppt-headless-agent-preset-registry')
 
-  const pluginConfig = new Map<string, (value: unknown) => unknown>([
-    ['@deepseek-ai/dsh-persona', PersonaConfig],
-    ['@deepseek-ai/dsh-agent-tool-presentation', PresentationConfig],
-    ['@deepseek-ai/dsh-tool-bash', ToolBashConfig],
-    ['@deepseek-ai/dsh-tool-fs', ToolFsConfig],
-    ['@deepseek-ai/dsh-tool-ask-user', ToolAskUserConfig],
-    ['@deepseek-ai/dsh-tool-todo', ToolTodoConfig],
-  ])
+  // Schemastery schemas are callable validators, but each package's generic signature
+  // differs; the map is typed by the one contract the assertions below rely on.
+  const pluginConfig = {
+    '@deepseek-ai/dsh-persona': PersonaConfig,
+    '@deepseek-ai/dsh-agent-tool-presentation': PresentationConfig,
+    '@deepseek-ai/dsh-tool-bash': ToolBashConfig,
+    '@deepseek-ai/dsh-tool-fs': ToolFsConfig,
+    '@deepseek-ai/dsh-tool-ask-user': ToolAskUserConfig,
+    '@deepseek-ai/dsh-tool-todo': ToolTodoConfig,
+  } as unknown as Record<string, (value: unknown) => unknown>
 
   it('declares a definition the preset package accepts', () => {
     expect(preset).toBeDefined()
-    expect(() => AgentPreset.Config(preset!.config)).not.toThrow()
+    expect(() => AgentPreset.Config(preset!.config as never)).not.toThrow()
     expect(preset!.config?.id).toBe('ppt')
   })
 
@@ -66,7 +68,7 @@ describe('PPT preset row configuration', () => {
     expect(plugins.length).toBeGreaterThan(0)
     const checked: string[] = []
     for (const row of plugins) {
-      const validate = row.name === undefined ? undefined : pluginConfig.get(row.name)
+      const validate = row.name === undefined ? undefined : pluginConfig[row.name]
       if (validate === undefined || row.config === undefined) continue
       expect(() => validate(row.config), `${String(row.id)} (${String(row.name)}) config must satisfy its package Config`).not.toThrow()
       checked.push(String(row.id))
