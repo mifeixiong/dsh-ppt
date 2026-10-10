@@ -279,3 +279,17 @@ Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(...,
 - 回渲与联系表：`src/ppt-image.ts`。
 
 本文提到的每个工具名，都可以在 `src/schemas.ts` 里逐字找到；本文没有描述表外工具能力。
+
+---
+
+## 8. 分支与归属：只并入 fork，不提上游 PR
+
+这个插件在 `mifeixiong/dsh-ppt`（fork）上维护。**改动直接并入 fork 的 `main`，
+不再向上游 `yejiming/dsh-ppt` 开 PR。**
+
+- 改完 → 合并进 fork `main` → 推送，交付即完成；fork 的 `main` 就是这条发布线。
+- 不创建上游 PR，也不为了等上游合并而把分支停在半成品状态。
+- GitHub 直连不可达，`git` 与 `gh` 都要显式走代理：
+  `git -c http.proxy=http://127.0.0.1:7897 push fork main`。
+- 主工作区可能压着在途改动；要动这个仓库时用 `git worktree` 开一棵隔离工作树，
+  别在主工作区上叠加提交。
