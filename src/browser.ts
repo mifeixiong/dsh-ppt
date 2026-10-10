@@ -6,7 +6,7 @@ import { chromium } from 'playwright-core'
 import { discoverBrowserExecutable } from './browser-discovery.ts'
 import { validatePublicHttpUrl } from './browser-security.ts'
 import { DEFAULT_LIMITS } from './limits.ts'
-import { PptError, throwIfAborted } from './errors.ts'
+import { describeIssues, PptError, throwIfAborted } from './errors.ts'
 import { isLocalFilesystemPath, isPathInside, resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import type { SessionOwner } from './session-resources.ts'
 import { SessionResourceRegistry } from './session-resources.ts'
@@ -267,7 +267,7 @@ export class BrowserRuntime {
       return { errors, warnings, fonts: [...usedFonts].sort(), designPages }
     }, { count: pageCount, fonts: [...allowedFonts] })
     if (inspection.errors.length > 0) {
-      throw new PptError('HTML_CREATE_VALIDATION_FAILED', 'HTML browser validation failed', { details: { issues: inspection.errors } })
+      throw new PptError('HTML_CREATE_VALIDATION_FAILED', `HTML browser validation failed: ${describeIssues(inspection.errors)}`, { details: { issues: inspection.errors } })
     }
     const designPages: HtmlPreviewResult['designPages'] = inspection.designPages.map(page => ({
       page: page.page,

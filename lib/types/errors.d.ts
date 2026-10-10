@@ -12,3 +12,15 @@ export declare class PptError extends Error {
 }
 export declare function asPptError(error: unknown, code: PptErrorCode, prefix?: string): PptError;
 export declare function throwIfAborted(signal?: AbortSignal, code?: PptErrorCode): void;
+/** A validator finding is either a bare line or a zod issue carrying its JSON path. */
+export type DescribableIssue = string | {
+    path: readonly PropertyKey[];
+    message: string;
+};
+/**
+ * Compress validation issues into one line a caller can act on. The hosting
+ * surface renders `PptError.message` but not its `details`, so the offending
+ * paths must reach the message itself — a constant message such as
+ * `PPT art direction validation failed` forces the caller to guess the schema.
+ */
+export declare function describeIssues(issues: readonly DescribableIssue[], limit?: number): string;

@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import { access, readFile, rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { dirname, isAbsolute, join } from 'node:path'
 import { atomicWriteJson, atomicWriteText } from './atomic.ts'
 import { ART_ROLES, artDirectionFindings, type ArtDirection, type DesignFinding, validateArtDirection } from './art-direction.ts'
 import type { BrowserRuntime } from './browser.ts'
-import { PptError, throwIfAborted } from './errors.ts'
+import { describeIssues, PptError, throwIfAborted } from './errors.ts'
 import { discoverRegisteredFonts, FONT_REGISTRY } from './fonts.ts'
 import { validatePptOutline } from './outline.ts'
 import { isPathInside, resolveWorkspacePath, workspaceRelative } from './paths.ts'
@@ -167,7 +167,9 @@ export async function validateDeckHtmlSource(
     }
   }
   domWindow.close()
-  if (issues.length > 0) throw new PptError('HTML_CREATE_VALIDATION_FAILED', 'HTML static validation failed', { details: { issues } })
+  if (issues.length > 0) {
+    throw new PptError('HTML_CREATE_VALIDATION_FAILED', `HTML static validation failed: ${describeIssues(issues)}`, { details: { issues } })
+  }
   return { fonts: [...usedFonts].sort(), primaryFonts: [...primaryFonts].sort(), unsupported: [...unsupported].sort(), designFindings }
 }
 
@@ -195,10 +197,11 @@ export async function createHtmlDeck(
   if (outline.some(slide => slide.content.some(item => item.kind === 'chart' && item.data_ref === undefined && !slide.content.some(other => other.kind === 'data')))) {
     throw new PptError('HTML_CREATE_INPUT_INVALID', 'outline still contains a chart with explicitly pending data')
   }
+  // deck.html is this function's own deterministic output, so a repeated call
+  // replaces it instead of refusing. Iterating on a deck otherwise needs a
+  // manual delete between every HTML edit. The PPTX side keeps its guard
+  // because that artifact can be hand-edited after it is written.
   const output = join(artifactRoot, 'deck.html')
-  try { await access(output); throw new PptError('PPT_OUTPUT_EXISTS', `output already exists: ${workspaceRelative(workspace, output)}`) } catch (error) {
-    if (error instanceof PptError) throw error
-  }
   const validation = await validateDeckHtmlSource(workspace, artifactRoot, html, outline.length, designPlan, strictDesign)
   if (fontDirs !== undefined) {
     const discovered = await discoverRegisteredFonts(fontDirs)
@@ -265,7 +268,7 @@ export async function createHtmlDeck(
         })
       }
     }
-    await atomicWriteText(output, html, { signal })
+    await atomicWriteText(output, html, { signal, overwrite: true })
     const designValidation = join(artifactRoot, 'design-validation.json')
     await atomicWriteJson(designValidation, {
       version: 1,
@@ -273,7 +276,7 @@ export async function createHtmlDeck(
       checks: designPlan === undefined ? [] : ['html-art-attributes', 'art-roles', 'visual-anchor-area', 'frame-policy', 'occupancy-silhouette', 'font-declarations', 'computed-typography-roles'],
       pages: rendered.designPages,
       findings: validation.designFindings,
-    }, { signal })
+    }, { signal, overwrite: true })
     return {
       html_path: workspaceRelative(workspace, output), page_count: outline.length,
       preview_paths: rendered.previews, fonts: [...new Set([...validation.fonts, ...rendered.fonts])].sort(),

@@ -51,7 +51,15 @@ describe('HTML browser preview and layout validation', () => {
     expect(result).toMatchObject({ page_count: 1, external_resources: 'none', fonts: ['Liter'] })
     expect(result.preview_paths).toHaveLength(1)
     expect(await readFile(`${workspace.root}/${result.html_path}`, 'utf8')).toContain('data-ppt-id="title"')
-    await expect(createHtmlDeck(browser, owner, workspace.root, outlinePath, deckHtml())).rejects.toMatchObject({ code: 'PPT_OUTPUT_EXISTS' })
+  })
+
+  it('replaces deck.html on a repeated call instead of refusing', async () => {
+    // deck.html is this tool's own deterministic output; forcing the caller to
+    // delete it between HTML edits turned every iteration into busywork.
+    const first = await createHtmlDeck(browser, owner, workspace.root, outlinePath, deckHtml())
+    const second = await createHtmlDeck(browser, owner, workspace.root, outlinePath, deckHtml('.body{color:#123456}'))
+    expect(second.html_path).toBe(first.html_path)
+    expect(await readFile(`${workspace.root}/${second.html_path}`, 'utf8')).toContain('#123456')
   })
 
   it('rejects text overflow and element bounds before committing deck.html', async () => {

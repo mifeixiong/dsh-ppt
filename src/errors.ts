@@ -70,3 +70,25 @@ export function throwIfAborted(signal?: AbortSignal, code: PptErrorCode = 'PPT_A
   const reason = signal.reason instanceof Error ? signal.reason.message : String(signal.reason ?? 'aborted')
   throw new PptError(code, `operation aborted: ${reason}`)
 }
+
+/** A validator finding is either a bare line or a zod issue carrying its JSON path. */
+export type DescribableIssue = string | { path: readonly PropertyKey[]; message: string }
+
+/**
+ * Compress validation issues into one line a caller can act on. The hosting
+ * surface renders `PptError.message` but not its `details`, so the offending
+ * paths must reach the message itself — a constant message such as
+ * `PPT art direction validation failed` forces the caller to guess the schema.
+ */
+export function describeIssues(issues: readonly DescribableIssue[], limit = 8): string {
+  const rendered = issues.map(issue => {
+    const line = typeof issue === 'string'
+      ? issue
+      : `${issue.path.length === 0 ? '<root>' : issue.path.join('.')}: ${issue.message}`
+    return line.length > 200 ? `${line.slice(0, 197)}...` : line
+  })
+  const shown = rendered.slice(0, limit)
+  return rendered.length > shown.length
+    ? `${shown.join('; ')}; +${rendered.length - shown.length} more`
+    : shown.join('; ')
+}

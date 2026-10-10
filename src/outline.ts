@@ -5,7 +5,7 @@ import { allocateArtifactDirectory } from './artifacts.ts'
 import { artDirectionFindings, validateArtDirection } from './art-direction.ts'
 import type { ArtDirection } from './art-direction.ts'
 import { atomicWriteJson } from './atomic.ts'
-import { PptError } from './errors.ts'
+import { describeIssues, PptError } from './errors.ts'
 import { resolveRegisteredFont, type DiscoveredFont } from './fonts.ts'
 import { workspaceRelative } from './paths.ts'
 
@@ -198,26 +198,11 @@ function resolveFontPlan(
   return { outline: resolvedOutline, ...(resolvedDesign === undefined ? {} : { designPlan: resolvedDesign }), warnings: [...warnings] }
 }
 
-/**
- * Compress zod issues into one line a caller can act on. The hosting surface
- * renders `PptError.message` but not its `details`, so the offending JSON paths
- * must reach the message itself.
- */
-function describeOutlineIssues(issues: readonly { path: readonly PropertyKey[]; message: string }[]): string {
-  const rendered = issues.map(issue => {
-    const path = issue.path.length === 0 ? '<root>' : issue.path.join('.')
-    const message = issue.message.length > 200 ? `${issue.message.slice(0, 197)}...` : issue.message
-    return `${path}: ${message}`
-  })
-  const shown = rendered.slice(0, 8)
-  return rendered.length > shown.length ? `${shown.join('; ')}; +${rendered.length - shown.length} more` : shown.join('; ')
-}
-
 export function validatePptOutline(value: unknown): PptOutline {
   const result = PptOutlineSchema.safeParse(value)
   if (result.success) return result.data
   const issues = result.error.issues.map(issue => ({ path: issue.path, message: issue.message }))
-  throw new PptError('PPT_OUTLINE_INVALID', `PPT outline validation failed: ${describeOutlineIssues(issues)}`, {
+  throw new PptError('PPT_OUTLINE_INVALID', `PPT outline validation failed: ${describeIssues(issues)}`, {
     details: { issues: issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })) },
   })
 }

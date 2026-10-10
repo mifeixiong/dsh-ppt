@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { PptError } from './errors.ts'
+import { describeIssues, PptError } from './errors.ts'
 
 export const ART_COMPOSITIONS = [
   'hero', 'editorial-split', 'asymmetric-split', 'process', 'layered', 'data-focus', 'quote', 'full-bleed', 'closing',
@@ -89,13 +89,15 @@ export interface DesignFinding {
 export function validateArtDirection(value: unknown, expectedPages?: number): ArtDirection {
   const result = ArtDirectionSchema.safeParse(value)
   if (!result.success) {
-    throw new PptError('PPT_ART_DIRECTION_INVALID', 'PPT art direction validation failed', {
-      details: { issues: result.error.issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })) },
+    const issues = result.error.issues.map(issue => ({ path: issue.path, message: issue.message }))
+    throw new PptError('PPT_ART_DIRECTION_INVALID', `PPT art direction validation failed: ${describeIssues(issues)}`, {
+      details: { issues: issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })) },
     })
   }
   if (expectedPages !== undefined && result.data.slides.length !== expectedPages) {
-    throw new PptError('PPT_ART_DIRECTION_INVALID', 'PPT art direction page count does not match outline', {
-      details: { issues: [{ path: 'slides', message: `expected ${expectedPages} pages, received ${result.data.slides.length}` }] },
+    const issues = [{ path: ['slides'], message: `expected ${expectedPages} pages, received ${result.data.slides.length}` }]
+    throw new PptError('PPT_ART_DIRECTION_INVALID', `PPT art direction page count does not match outline: ${describeIssues(issues)}`, {
+      details: { issues: issues.map(issue => ({ path: issue.path.join('.'), message: issue.message })) },
     })
   }
   return result.data
