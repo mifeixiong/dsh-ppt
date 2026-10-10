@@ -28,6 +28,7 @@ export const PPT_TOOL_NAMES = [
   'ppt_fonts',
   'ppt_image',
   'ppt_outline',
+  'ppt_themes',
   'python',
 ] as const
 

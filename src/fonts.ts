@@ -3,6 +3,7 @@ import { opendir, readFile } from 'node:fs/promises'
 import { extname, join } from 'node:path'
 import * as fontkit from 'fontkit'
 import { PptError } from './errors.ts'
+import type { InstalledFontFace } from './font-files.ts'
 import { systemFontDirectories } from './platform.ts'
 
 export interface FontDescriptor {
@@ -223,6 +224,41 @@ function semanticRole(font: FontDescriptor, text: string): FontRole {
   if (font.roles.includes('code')) return 'code'
   if (font.roles.includes('display') && !font.roles.includes('latin-sans') && !font.roles.includes('latin-serif')) return 'display'
   return serif ? 'latin-serif' : 'latin-sans'
+}
+
+/**
+ * Adapts the machine-wide font inventory onto the shape the outline resolver
+ * already understands, so a deck may name any font that is actually installed
+ * instead of only the families in the built-in registry. Coverage is rebuilt
+ * from the face flags: a code point enters the set only when the face claims the
+ * script covering it, which keeps `supportsText` meaningful without re-reading
+ * every glyph table of every installed font. Pass `wanted` to restrict the
+ * conversion to the families a deck actually names.
+ */
+export function installedFontsAsDiscovered(
+  faces: readonly InstalledFontFace[],
+  wanted?: ReadonlySet<string>,
+): DiscoveredFont[] {
+  const discovered: DiscoveredFont[] = []
+  for (const face of faces) {
+    if (wanted !== undefined && !wanted.has(fontKey(face.family))) continue
+    const codePoints = new Set<number>()
+    if (face.supportsLatin) for (let point = 0x20; point <= 0x7e; point += 1) codePoints.add(point)
+    if (face.supportsCjk) for (let point = 0x4e00; point <= 0x9fa5; point += 1) codePoints.add(point)
+    discovered.push({
+      name: face.family,
+      file: face.file,
+      sha256: face.sha256,
+      familyName: face.family,
+      postscriptName: face.postscriptName,
+      weight: face.subfamily,
+      glyphCount: face.glyphCount,
+      supportsLatin: face.supportsLatin,
+      supportsCjk: face.supportsCjk,
+      codePoints,
+    })
+  }
+  return discovered
 }
 
 export function registeredFont(name: string): FontDescriptor | undefined {

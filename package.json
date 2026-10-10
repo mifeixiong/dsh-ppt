@@ -1,7 +1,7 @@
 {
   "name": "@yejiming/dsh-ppt",
   "description": "PPT design preset and editable PPTX production tools for DeepSeek Harness",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/yejiming/dsh-ppt.git"

@@ -3,15 +3,22 @@ import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from './index.ts'
 import { PptError } from './errors.ts'
-import { buildFontCatalog, discoverRegisteredFonts } from './fonts.ts'
+import { buildFontCatalog, discoverRegisteredFonts, installedFontsAsDiscovered, registeredFont } from './fonts.ts'
+import { installFontFile, listInstalledFonts, type InstalledFontFace } from './font-files.ts'
 import { createHtmlDeck } from './html.ts'
 import { describeImageSearchDegradation } from './image-search.ts'
 import { writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
+import { planSlideAnimations, TEXT_ANIMATION_DIRECTIONS, TEXT_ANIMATION_EFFECTS, TEXT_ANIMATION_STARTS, type AnimationPlan, type SlideAnimationPlanEntry, type TextAnimation } from './animation.ts'
+import { SLIDE_TRANSITION_DIRECTIONS, SLIDE_TRANSITION_SPEEDS, SLIDE_TRANSITION_TYPES, type SlideTransition, type SlideTransitionPlan } from './transitions.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import { createPptx } from './pptx.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
 import type { SessionOwner } from './session-resources.ts'
+import {
+  contrastRatio, findTheme, listThemes, planThemePages, PPT_THEMES, themeFindings, themeSummary,
+  validateTheme, type ArtBackground, type PptTheme,
+} from './themes.ts'
 
 export const name = 'dsh-ppt-tools'
 export const inject = ['tools', 'pptRuntime']
@@ -124,6 +131,18 @@ const OUTLINE_OUTPUT = {
     fonts: { type: 'array', items: { type: 'string' }, required: true },
     warnings: { type: 'array', items: { type: 'string' }, required: true },
     blocking_warnings: { type: 'array', items: { type: 'string' }, required: true },
+    theme: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', required: true },
+        name: { type: 'string', required: true },
+        palette_source: { type: 'string', required: true },
+        accent: { type: 'string', required: true },
+        accent_inverted: { type: 'string', required: true },
+        findings: { type: 'array', items: { type: 'string' }, required: true },
+      },
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 } as const
@@ -180,6 +199,16 @@ const PPTX_OUTPUT = {
     slide_count: { type: 'integer', required: true },
     editable_elements: { type: 'integer', required: true },
     preview_paths: { type: 'array', items: { type: 'string' }, required: true },
+    // Present when the call supplied per-page motion, so the caller can confirm
+    // what was injected without reopening the package.
+    motion: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        pages_with_transitions: { type: 'integer', required: true },
+        pages_with_animations: { type: 'integer', required: true },
+        animations: { type: 'integer', required: true },
+      },
+    },
     warnings: { type: 'array', items: { type: 'string' }, required: true },
   },
   additionalProperties: false,
@@ -264,6 +293,35 @@ const PPT_FONTS_OUTPUT = {
           supports_latin: { type: 'boolean', required: true }, supports_cjk: { type: 'boolean', required: true },
           covers_text: { type: 'boolean' },
         },
+      },
+    },
+    // Present only for scope=installed: the machine-wide inventory that lets the
+    // model pick a font this deck will actually render with, not just a registry entry.
+    installed_faces: {
+      type: 'array',
+      items: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          family: { type: 'string', required: true }, subfamily: { type: 'string', required: true },
+          postscript_name: { type: 'string' }, file: { type: 'string', required: true },
+          format: { type: 'string', required: true }, weight_class: { type: 'integer', required: true },
+          fixed_pitch: { type: 'boolean', required: true }, embeddable: { type: 'boolean', required: true },
+          fs_type: { type: 'integer', required: true }, panose: { type: 'string' },
+          pitch_family: { type: 'integer', required: true }, charset: { type: 'integer', required: true },
+          glyph_count: { type: 'integer', required: true },
+          supports_latin: { type: 'boolean', required: true }, supports_cjk: { type: 'boolean', required: true },
+          sha256: { type: 'string', required: true },
+        },
+      },
+    },
+    // Present only when install_path was supplied.
+    installed_font: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        family: { type: 'string', required: true }, installed_path: { type: 'string', required: true },
+        platform: { type: 'string', required: true }, scope: { type: 'string', required: true },
+        registered: { type: 'boolean', required: true }, dry_run: { type: 'boolean', required: true },
+        uninstall_hint: { type: 'string' },
       },
     },
     warnings: { type: 'array', items: { type: 'string' }, required: true },
@@ -402,10 +460,264 @@ function imageSearchTool(ctx: Context) {
   })
 }
 
+/**
+ * The registry answers "what does this build recommend"; the machine inventory
+ * answers "what will actually render here". A deck may name any installed
+ * family, so the tool has to be able to show both.
+ */
+function installedFaceWire(face: InstalledFontFace) {
+  return {
+    family: face.family, subfamily: face.subfamily,
+    ...(face.postscriptName === null ? {} : { postscript_name: face.postscriptName }),
+    file: face.file, format: face.format, weight_class: face.weightClass,
+    fixed_pitch: face.isFixedPitch, embeddable: face.embeddable, fs_type: face.fsType,
+    ...(face.panose === null ? {} : { panose: face.panose }),
+    pitch_family: face.pitchFamily, charset: face.charset, glyph_count: face.glyphCount,
+    supports_latin: face.supportsLatin, supports_cjk: face.supportsCjk, sha256: face.sha256,
+  }
+}
+
+const PPT_THEMES_OUTPUT = {
+  type: 'object',
+  properties: {
+    usage: { type: 'string', required: true },
+    warnings: { type: 'array', items: { type: 'string' }, required: true },
+    themes: {
+      type: 'array', required: true,
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', required: true },
+          name: { type: 'string', required: true },
+          concept: { type: 'string', required: true },
+          scenes: { type: 'array', items: { type: 'string' }, required: true },
+          palette_source: { type: 'string', required: true },
+          accent: { type: 'string', required: true },
+          accent_inverted: { type: 'string', required: true },
+          display_font: { type: 'string', required: true },
+          body_font: { type: 'string', required: true },
+          signature: { type: 'string', required: true },
+        },
+        additionalProperties: false,
+      },
+    },
+    theme: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', required: true },
+        name: { type: 'string', required: true },
+        concept: { type: 'string', required: true },
+        audience_effect: { type: 'string', required: true },
+        scenes: { type: 'array', items: { type: 'string' }, required: true },
+        palette_source: { type: 'string', required: true },
+        palette: {
+          type: 'object', required: true,
+          properties: {
+            background: { type: 'array', items: { type: 'string' }, required: true },
+            surface: { type: 'array', items: { type: 'string' }, required: true },
+            accent: { type: 'string', required: true },
+            accent_inverted: { type: 'string', required: true },
+            text: { type: 'array', items: { type: 'string' }, required: true },
+          },
+          additionalProperties: false,
+        },
+        typography: {
+          type: 'object', required: true,
+          properties: {
+            display: { type: 'object', required: true, properties: { family: { type: 'string', required: true }, weight: { type: 'integer', required: true } }, additionalProperties: false },
+            body: { type: 'object', required: true, properties: { family: { type: 'string', required: true }, weight: { type: 'integer', required: true } }, additionalProperties: false },
+            latin: { type: 'object', required: true, properties: { family: { type: 'string', required: true }, weight: { type: 'integer', required: true } }, additionalProperties: false },
+            code: { type: 'object', required: true, properties: { family: { type: 'string', required: true }, weight: { type: 'integer', required: true } }, additionalProperties: false },
+          },
+          additionalProperties: false,
+        },
+        accent_usage: { type: 'string', required: true },
+        decoration: { type: 'array', items: { type: 'string' }, required: true },
+        layout_notes: {
+          type: 'array', required: true,
+          items: {
+            type: 'object',
+            properties: {
+              composition: { type: 'string', required: true },
+              note: { type: 'string', required: true },
+            },
+            additionalProperties: false,
+          },
+        },
+        composition_cycle: { type: 'array', items: { type: 'string' }, required: true },
+        background_cycle: { type: 'array', items: { type: 'string' }, required: true },
+        contrast: { type: 'array', items: { type: 'string' }, required: true },
+      },
+      additionalProperties: false,
+    },
+    pages: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', required: true },
+          type: { type: 'string', required: true },
+          composition: { type: 'string', required: true },
+          density: { type: 'string', required: true },
+          background_role: { type: 'string', required: true },
+          title_treatment: { type: 'string', required: true },
+          frame_policy: { type: 'string', required: true },
+          colors: {
+            type: 'object', required: true,
+            properties: {
+              background: { type: 'string', required: true },
+              surface: { type: 'string', required: true },
+              text: { type: 'string', required: true },
+              accent: { type: 'string', required: true },
+            },
+            additionalProperties: false,
+          },
+          note: { type: 'string', required: true },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  additionalProperties: false,
+} as const
+
+/** Resolve the concrete colours one page of this theme should use. */
+function themePageColors(theme: PptTheme, role: ArtBackground): { background: string; surface: string; text: string; accent: string; note: string } {
+  if (role === 'accent') {
+    const first = contrastRatio(theme.palette.text[0]!, theme.palette.accent)
+    const secondIndex = 1 % theme.palette.text.length
+    const second = contrastRatio(theme.palette.text[secondIndex]!, theme.palette.accent)
+    const pick = first >= second ? 0 : secondIndex
+    const text = theme.palette.text[pick]!
+    return {
+      background: theme.palette.accent,
+      surface: theme.palette.accent,
+      text,
+      // The page field is already the accent colour, so emphasis moves to the
+      // inverted accent rather than repeating the fill behind it.
+      accent: theme.palette.accent_inverted,
+      note: `Accent field: fill the page with ${theme.palette.accent} and set text in ${text} (${Math.max(first, second).toFixed(2)}:1).`,
+    }
+  }
+  const group = role === 'inverse' ? 1 : 0
+  const accent = group === 0 ? theme.palette.accent : theme.palette.accent_inverted
+  return {
+    background: theme.palette.background[group % theme.palette.background.length]!,
+    surface: theme.palette.surface[group % theme.palette.surface.length]!,
+    text: theme.palette.text[group % theme.palette.text.length]!,
+    accent,
+    note: role === 'image'
+      ? `Image field: keep the image edge to edge and set text in ${theme.palette.text[group % theme.palette.text.length]!} only where it clears 4.5:1 against the picture.`
+      : `${role} field: page ${theme.palette.background[group % theme.palette.background.length]!}, cards ${theme.palette.surface[group % theme.palette.surface.length]!}, text ${theme.palette.text[group % theme.palette.text.length]!}, accent ${accent}.`,
+  }
+}
+
+function pptThemesTool() {
+  return defineTool({
+    name: 'ppt_themes',
+    description: [
+      'List the built-in deck themes and read one in full before the Art Direction pass.',
+      'Call it with no arguments to see every theme with its scene tags, then pass theme_id to get a vetted palette, type roles, decoration vocabulary and per-composition layout notes.',
+      'Pass page_types as well to get the exact visual half of the art_direction plan for each page: composition, density, background role, title treatment, frame policy and the concrete colours that page should use.',
+      'A theme is a starting point, not a substitute: the concept, audience_effect, page job and page takeaway stay yours to write from the actual content.',
+    ].join(' '),
+    parameters: {
+      scene: { type: 'string', description: 'Optional scene filter, matched case-insensitively against the theme scene tags, for example 融资路演 or 技术方案.' },
+      theme_id: { type: 'string', description: 'Theme to read in full. Omit to list the catalogue.' },
+      page_types: {
+        type: 'array', items: { type: 'string', enum: SLIDE_TYPES },
+        description: 'Optional ordered slide roles for this deck; returns the per-page visual plan for the chosen theme. Requires theme_id and at most 60 entries.',
+      },
+    },
+    output: {
+      schema: PPT_THEMES_OUTPUT,
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args) {
+      const catalog = listThemes(PPT_THEMES, args.scene)
+      if (args.theme_id === undefined || args.theme_id.trim() === '') {
+        if (args.page_types !== undefined) {
+          throw new PptError('PPT_THEME_INVALID', 'ppt_themes page_types requires theme_id')
+        }
+        return { ...catalog }
+      }
+      const theme = validateTheme(findTheme(args.theme_id.trim(), PPT_THEMES))
+      const findings = themeFindings(theme)
+      const warnings = [...catalog.warnings, ...findings.map(finding => `${finding.code}: ${finding.message}`)]
+      let pages: Array<{
+        page: number
+        type: typeof SLIDE_TYPES[number]
+        composition: string
+        density: string
+        background_role: string
+        title_treatment: string
+        frame_policy: string
+        colors: { background: string; surface: string; text: string; accent: string }
+        note: string
+      }> | undefined
+      if (args.page_types !== undefined) {
+        if (args.page_types.length === 0 || args.page_types.length > 60) {
+          throw new PptError('PPT_THEME_INVALID', 'ppt_themes page_types must contain 1..60 slide roles')
+        }
+        pages = planThemePages(theme, args.page_types).map((entry) => {
+          const colors = themePageColors(theme, entry.background_role)
+          const compositionNote = theme.layout_notes[entry.composition] ?? `${entry.composition} composition at ${entry.density} density.`
+          return {
+            page: entry.page,
+            type: entry.type,
+            composition: entry.composition,
+            density: entry.density,
+            background_role: entry.background_role,
+            title_treatment: entry.title_treatment,
+            frame_policy: entry.frame_policy,
+            colors: {
+              background: colors.background, surface: colors.surface, text: colors.text, accent: colors.accent,
+            },
+            note: `${compositionNote} ${colors.note}`,
+          }
+        })
+      }
+      return {
+        usage: catalog.usage,
+        warnings,
+        themes: PPT_THEMES.map(themeSummary),
+        theme: {
+          id: theme.id,
+          name: theme.name,
+          concept: theme.concept,
+          audience_effect: theme.audience_effect,
+          scenes: [...theme.scenes],
+          palette_source: theme.palette_source,
+          palette: {
+            background: [...theme.palette.background],
+            surface: [...theme.palette.surface],
+            accent: theme.palette.accent,
+            accent_inverted: theme.palette.accent_inverted,
+            text: [...theme.palette.text],
+          },
+          typography: {
+            display: { ...theme.typography.display },
+            body: { ...theme.typography.body },
+            latin: { ...theme.typography.latin },
+            code: { ...theme.typography.code },
+          },
+          accent_usage: `Use ${theme.palette.accent} as art_direction.palette.accent. On pages whose background_role is inverse or accent, put ${theme.palette.accent_inverted} in the HTML where the accent colour would otherwise go; the plan schema carries one accent, so this swap lives in the markup.`,
+          decoration: [...theme.decoration],
+          layout_notes: Object.entries(theme.layout_notes).map(([composition, note]) => ({ composition, note: note as string })),
+          composition_cycle: [...theme.composition_cycle],
+          background_cycle: [...theme.background_cycle],
+          contrast: findings.map(finding => `${finding.severity}: ${finding.message}`),
+        },
+        ...(pages === undefined ? {} : { pages }),
+      }
+    },
+  })
+}
+
 function pptFontsTool(ctx: Context) {
   return defineTool({
     name: 'ppt_fonts',
-    description: 'Inspect fonts currently available inside the plugin approved registry before choosing Art Direction typography. This is not the host-wide font inventory.',
+    description: 'Inspect the fonts this machine can actually use before choosing Art Direction typography. scope=registry lists the plugin approved families with deterministic recommendations; scope=installed adds every font face installed on this machine with its PANOSE, pitch/family byte, charset, glyph counts, and embedding permission, which is what you need to pick a font this deck will really render with. Supply install_path to install a font file from disk into the current user font directory.',
     parameters: {
       text: { type: 'string', description: 'Optional 1..500 Unicode code point sample. Installed results and recommendations must cover every non-whitespace character.' },
       role: {
@@ -417,21 +729,79 @@ function pptFontsTool(ctx: Context) {
         description: 'Optional registry layer filter. Defaults to all.',
       },
       include_unavailable: { type: 'boolean', description: 'Include approved but uninstalled registry entries. Defaults to false.' },
+      scope: {
+        type: 'string', enum: ['registry', 'installed'],
+        description: 'Defaults to registry. Use installed to enumerate the machine-wide font inventory that ppt_outline may name.',
+      },
+      limit: {
+        type: 'integer',
+        description: 'Maximum installed faces returned when scope=installed. Defaults to 200, maximum 2000.',
+      },
+      install_path: {
+        type: 'string',
+        description: 'Optional workspace-relative or absolute .ttf/.otf/.ttc path to install for the current user, so a font on disk can be named by the deck afterwards.',
+      },
+      dry_run: { type: 'boolean', description: 'Report what install_path would do without writing any file or registry entry.' },
     },
     output: {
       schema: PPT_FONTS_OUTPUT,
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
-    async execute(args) {
+    async execute(args, exec) {
+      const { workspace } = browserExecution(exec)
       const text = args.text?.normalize('NFC').trim()
       if (args.text !== undefined && (text === undefined || [...text].length < 1 || [...text].length > 500)) {
         throw new PptError('PPT_RESOURCE_LIMIT', 'ppt_fonts text must contain 1..500 Unicode code points')
       }
-      const fonts = await discoverRegisteredFonts(ctx.pptRuntime.options.fontDirs)
-      return buildFontCatalog(fonts, {
+      const fontDirs = ctx.pptRuntime.options.fontDirs
+      const registered = await discoverRegisteredFonts(fontDirs)
+      const catalog = buildFontCatalog(registered, {
         ...(text === undefined ? {} : { text }), role: args.role ?? 'all', layer: args.layer ?? 'all',
         includeUnavailable: args.include_unavailable === true, platform: process.platform,
       })
+      const scope = args.scope === 'installed' ? 'installed' : 'registry'
+      const scopeNote = scope === 'installed'
+        ? 'Registry recommendations plus the machine-wide font inventory; any family in installed_faces may be named by ppt_outline.'
+        : 'Approved registry only. Ask again with scope=installed to see every font this machine has.'
+      let installedFaces: ReturnType<typeof installedFaceWire>[] | undefined
+      let installedFont: {
+        family: string
+        installed_path: string
+        platform: string
+        scope: string
+        registered: boolean
+        dry_run: boolean
+        uninstall_hint?: string
+      } | undefined
+      let warnings = catalog.warnings
+      if (scope === 'installed') {
+        const limit = args.limit ?? 200
+        if (!Number.isInteger(limit) || limit < 1 || limit > 2000) {
+          throw new PptError('PPT_RESOURCE_LIMIT', 'ppt_fonts limit must be an integer between 1 and 2000')
+        }
+        const faces = await listInstalledFonts(fontDirs)
+        installedFaces = faces.slice(0, limit).map(installedFaceWire)
+        if (faces.length > limit) {
+          warnings = [...warnings, `installed_faces was truncated to ${limit} of ${faces.length} faces; raise limit or narrow the request`]
+        }
+      }
+      if (args.install_path !== undefined) {
+        const source = await resolveWorkspacePath(workspace, args.install_path, { mustExist: true, kind: 'file' })
+        const installed = await installFontFile(source, { dryRun: args.dry_run === true })
+        installedFont = {
+          family: installed.family, installed_path: installed.installedPath, platform: installed.platform,
+          scope: installed.scope, registered: installed.registered, dry_run: args.dry_run === true,
+          ...(installed.uninstallHint === null ? {} : { uninstall_hint: installed.uninstallHint }),
+        }
+      }
+      return {
+        ...catalog,
+        scope,
+        scope_note: scopeNote,
+        warnings,
+        ...(installedFaces === undefined ? {} : { installed_faces: installedFaces }),
+        ...(installedFont === undefined ? {} : { installed_font: installedFont }),
+      }
     },
   })
 }
@@ -457,11 +827,33 @@ const SLIDE_STYLE = {
   type: 'object',
   additionalProperties: false,
   properties: {
-    layout: { type: 'string', required: true, enum: SLIDE_LAYOUTS, description: 'Page layout; it must be compatible with the slide type.' },
+    // The layout name alone does not tell the model what the page can hold, and a
+    // wrong pick only surfaces at html_create or ppt_image. Every clause below
+    // mirrors the `allowed` compatibility table in src/outline.ts, so the
+    // description is a selection guide rather than a synonym list.
+    layout: { type: 'string', required: true, enum: SLIDE_LAYOUTS, description: [
+      'Page layout. Each value is valid only for the slide types in parentheses, and it also decides how many items the page carries.',
+      'cover = full-bleed title page (cover).',
+      'center = one centered statement, no list (cover, section, quote, ending).',
+      'title-content = title plus a single stacked body column; the default for prose-heavy pages (agenda, content, summary).',
+      'split = two side-by-side halves for a claim and its evidence (content, comparison, data).',
+      'two-column = two balanced columns for 4..8 parallel points (agenda, content, comparison, data, summary).',
+      'three-column = three compact columns, one idea each, keep item text short (agenda, content, summary).',
+      'grid = 4..8 equal-weight cards in a matrix; best for feature and benefit inventories (agenda, content, data, summary).',
+      'hero-image = one dominant image with a title over or beside it; requires a non-background image item (cover, section, content).',
+      'image-left / image-right = one supporting image next to the text (content, quote).',
+      'timeline-horizontal / timeline-vertical = 3..8 point items in chronological order (timeline).',
+      'process-horizontal / process-vertical = 3..8 point items as ordered steps (process).',
+      'chart-focus = exactly one chart with nothing competing with it (data).',
+      'quote-focus = one quotation as the page hero (quote).',
+      'full-bleed = one edge-to-edge image or colour field with minimal text (cover, section, quote, ending).',
+      'closing = the final call to action or thank-you page (ending).',
+      'Pick the layout that matches the content shape before styling it, and avoid repeating the same layout on adjacent pages.',
+    ].join(' ') },
     background: { type: 'string', required: true, enum: ['light', 'dark', 'accent', 'image'], description: 'image requires exactly one background image item and vice versa.' },
     accent: { type: 'string', required: true, description: 'Accent as #RRGGBB hex; normalized to uppercase.' },
-    title_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts catalog; ppt_outline substitutes a deterministic fallback and reports it.' },
-    body_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts catalog; ppt_outline substitutes a deterministic fallback and reports it.' },
+    title_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts registry, or any family this machine has installed (see ppt_fonts scope=installed); ppt_outline substitutes a deterministic fallback and reports it.' },
+    body_font: { type: 'string', required: true, description: 'Font family from the ppt_fonts registry, or any family this machine has installed (see ppt_fonts scope=installed); ppt_outline substitutes a deterministic fallback and reports it.' },
     visual_direction: { type: 'string', required: true, description: '1..200 code points describing the intended visual result of this page.' },
   },
 } as const
@@ -471,7 +863,20 @@ const SLIDE = {
   additionalProperties: false,
   properties: {
     page: { type: 'integer', required: true, description: '1-based slide position; it must equal the index in slides + 1.' },
-    type: { type: 'string', required: true, enum: SLIDE_TYPES, description: 'Slide role; it constrains the layout, the visible item count, and whether visible content is required.' },
+    type: { type: 'string', required: true, enum: SLIDE_TYPES, description: [
+      'Slide role; it constrains the layout, the visible item count, and whether visible content is required.',
+      'cover = opening title page, may carry no visible items.',
+      'agenda = what the deck will cover.',
+      'section = divider that names the next part; may carry no visible items.',
+      'content = the workhorse explanatory page.',
+      'comparison = requires at least two explicit item groups.',
+      'timeline = strictly chronological, needs 3..8 point items.',
+      'process = ordered steps, needs 3..8 point items.',
+      'data = evidence page, at most two charts; the chart-focus layout requires exactly one.',
+      'quote = one quotation.',
+      'summary = what the audience should take away.',
+      'ending = closing page, may carry no visible items.',
+    ].join(' ') },
     title: { type: 'string', required: true, description: '1..80 code points without newlines or HTML; 1..60 for every type except cover.' },
     content: { type: 'array', required: true, items: SLIDE_CONTENT_ITEM, description: '1..12 items; at most 8 visible plus at most 2 notes; cover, section, and ending may carry no visible item.' },
     style: { ...SLIDE_STYLE, required: true },
@@ -492,6 +897,10 @@ function outlineTool(ctx: Context) {
         type: 'object', additionalProperties: true,
         description: 'Optional versioned deck-level and per-slide Art Direction. The PPT persona supplies this by default; omitted calls remain in legacy mode.',
       },
+      theme_id: {
+        type: 'string',
+        description: 'Optional built-in theme from ppt_themes. When supplied, the outline and plan are checked against that theme and every drift is reported: colours outside the theme palette, a replaced accent, replaced fonts, or a theme selected without any art_direction.',
+      },
     },
     output: {
       schema: OUTLINE_OUTPUT,
@@ -499,10 +908,21 @@ function outlineTool(ctx: Context) {
     },
     async execute(args, exec) {
       const { workspace } = browserExecution(exec)
-      const fonts = await discoverRegisteredFonts(ctx.pptRuntime.options.fontDirs)
+      const fontDirs = ctx.pptRuntime.options.fontDirs
+      const fonts = await discoverRegisteredFonts(fontDirs)
+      // A deck may name any family that is actually installed on this machine.
+      // Only pay for the machine-wide scan — which reads every installed font
+      // file — when the outline asks for something the registry does not know.
+      const known = new Set(fonts.map(font => font.name))
+      const unknown = [...new Set(args.slides.flatMap(slide => [slide.style.title_font, slide.style.body_font]))]
+        .filter(name => !known.has(name) && registeredFont(name) === undefined)
+      const extra = unknown.length === 0
+        ? []
+        : installedFontsAsDiscovered(await listInstalledFonts(fontDirs), new Set(unknown))
       return writePptOutline(
         workspace, args.artifact_title, args.slides, ctx.pptRuntime.options.outputRoot, exec.signal, args.art_direction,
-        { discovered: fonts, platform: process.platform },
+        { discovered: [...fonts, ...extra], platform: process.platform },
+        args.theme_id,
       )
     },
   })
@@ -548,12 +968,89 @@ function htmlTool(ctx: Context) {
   })
 }
 
+interface MotionSummary {
+  pages_with_transitions: number
+  pages_with_animations: number
+  animations: number
+}
+
+interface RawEffectPage {
+  page: number
+  transition?: {
+    type: string
+    direction?: string
+    speed?: string
+    advance_after_ms?: number
+    advance_on_click?: boolean
+  }
+  animations?: readonly {
+    target: string
+    effect: string
+    direction?: string
+    by_paragraph?: boolean
+    start?: string
+    duration_ms?: number
+  }[]
+}
+
+/**
+ * Turns the tool-facing snake_case motion payload into the plans the PPTX writer
+ * consumes. A page that names neither a transition nor an animation is simply
+ * absent from the plans, so an untouched deck keeps pptxgenjs' bytes verbatim.
+ */
+function buildMotionPlans(effects: readonly RawEffectPage[] | undefined): {
+  transitions: SlideTransitionPlan | undefined
+  animations: AnimationPlan | undefined
+  summary: MotionSummary | undefined
+} {
+  if (effects === undefined || effects.length === 0) {
+    return { transitions: undefined, animations: undefined, summary: undefined }
+  }
+  const transitions = new Map<number, SlideTransition>()
+  const animationEntries: SlideAnimationPlanEntry[] = []
+  for (const entry of effects) {
+    const transition = entry.transition
+    if (transition !== undefined) {
+      transitions.set(entry.page, {
+        type: transition.type as SlideTransition['type'],
+        ...(transition.direction === undefined ? {} : { direction: transition.direction as NonNullable<SlideTransition['direction']> }),
+        ...(transition.speed === undefined ? {} : { speed: transition.speed as NonNullable<SlideTransition['speed']> }),
+        ...(transition.advance_after_ms === undefined ? {} : { advanceAfterMs: transition.advance_after_ms }),
+        ...(transition.advance_on_click === false ? { advanceOnClick: false as const } : {}),
+      })
+    }
+    if (entry.animations !== undefined && entry.animations.length > 0) {
+      animationEntries.push({
+        page: entry.page,
+        animations: entry.animations.map(animation => ({
+          target: animation.target,
+          effect: animation.effect as TextAnimation['effect'],
+          ...(animation.direction === undefined ? {} : { direction: animation.direction as NonNullable<TextAnimation['direction']> }),
+          ...(animation.by_paragraph === true ? { byParagraph: true as const } : {}),
+          ...(animation.start === undefined ? {} : { start: animation.start as NonNullable<TextAnimation['start']> }),
+          ...(animation.duration_ms === undefined ? {} : { durationMs: animation.duration_ms }),
+        })),
+      })
+    }
+  }
+  return {
+    transitions: transitions.size === 0 ? undefined : transitions,
+    animations: animationEntries.length === 0 ? undefined : planSlideAnimations(animationEntries),
+    summary: {
+      pages_with_transitions: transitions.size,
+      pages_with_animations: animationEntries.length,
+      animations: animationEntries.reduce((total, entry) => total + entry.animations.length, 0),
+    },
+  }
+}
+
 function pptxTool(ctx: Context) {
   const result = (
     report: PptQualityReport,
     reportPath: string,
     visualReviewPath: string,
     conversion: { page_count?: unknown; native_element_count?: unknown; rasterized_elements?: unknown },
+    motion?: MotionSummary,
   ) => {
     const pageCount = typeof conversion.page_count === 'number' ? conversion.page_count : report.artifacts.pptx_previews.length
     const nativeElementCount = typeof conversion.native_element_count === 'number' ? conversion.native_element_count : 0
@@ -575,6 +1072,7 @@ function pptxTool(ctx: Context) {
       report_path: reportPath,
       visual_review_path: visualReviewPath,
       preview_paths: report.artifacts.pptx_previews,
+      ...(motion === undefined ? {} : { motion }),
       warnings,
       overall_status: report.overall_status,
     }
@@ -594,6 +1092,41 @@ function pptxTool(ctx: Context) {
         type: 'boolean',
         description: 'After read_image review and writing visual-review.json, set true to validate that independent review and recompute the four quality gates without regenerating the PPTX.',
       },
+      effects: {
+        type: 'array',
+        description: 'Optional per-page motion. A page carrying a transition and/or entrance animations is rewritten inside the finished package; pages left out stay static. Animations target an IR element id, which is the shape name in the PPTX.',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            page: { type: 'integer', required: true, description: '1-based page number.' },
+            transition: {
+              type: 'object', additionalProperties: false,
+              properties: {
+                type: { type: 'string', required: true, enum: SLIDE_TRANSITION_TYPES, description: 'Slide transition family.' },
+                direction: { type: 'string', enum: SLIDE_TRANSITION_DIRECTIONS, description: 'Only push, wipe, cover, and pull accept a direction.' },
+                speed: { type: 'string', enum: SLIDE_TRANSITION_SPEEDS },
+                advance_after_ms: { type: 'integer', description: 'Auto-advance delay in milliseconds.' },
+                advance_on_click: { type: 'boolean', description: 'May only be set to false, to disable advancing on click.' },
+              },
+            },
+            animations: {
+              type: 'array',
+              description: 'Entrance animations in playback order, at most 24 per page.',
+              items: {
+                type: 'object', additionalProperties: false,
+                properties: {
+                  target: { type: 'string', required: true, description: 'IR element id, which becomes the shape name in the PPTX.' },
+                  effect: { type: 'string', required: true, enum: TEXT_ANIMATION_EFFECTS, description: 'Entrance effect. Motion effects such as zoom, fly-in, and spiral are what makes text appear to move.' },
+                  direction: { type: 'string', enum: TEXT_ANIMATION_DIRECTIONS, description: 'Accepted only by effects that render one: wipe, fly-in, crawl, peek, blinds, checkerboard, random-bars, box, circle, diamond, plus, stretch, swivel.' },
+                  by_paragraph: { type: 'boolean', description: 'Build the effect one paragraph at a time instead of animating the whole box.' },
+                  start: { type: 'string', enum: TEXT_ANIMATION_STARTS, description: 'Defaults to on-click. The first animation of a page always opens a click step, and an effect that follows another in the same group plays with or after it.' },
+                  duration_ms: { type: 'integer', description: '1..60000; defaults to 500.' },
+                },
+              },
+            },
+          },
+        },
+      },
     },
     output: {
       schema: PPTX_OUTPUT,
@@ -601,6 +1134,7 @@ function pptxTool(ctx: Context) {
     },
     async execute(args, exec) {
       const { owner, workspace } = browserExecution(exec)
+      const motion = buildMotionPlans(args.effects)
       const normalizedOutput = workspaceRelative(workspace, await resolveWorkspacePath(workspace, args.output_path, {
         ...(args.finalize_visual_review === true ? { mustExist: true as const, kind: 'file' as const } : {}),
       }))
@@ -614,11 +1148,11 @@ function pptxTool(ctx: Context) {
         ])
         const report = await applyVisualReview(workspace, reportPath, visualReviewPath)
         const conversion = report.conversion ?? {}
-        return result(report, reportPath, visualReviewPath, conversion)
+        return result(report, reportPath, visualReviewPath, conversion, motion.summary)
       }
       const conversion = await createPptx(
         ctx.pptRuntime.browser, owner, workspace, args.html_path, args.outline_path, normalizedOutput,
-        args.fallback_mode, exec.signal,
+        args.fallback_mode, exec.signal, motion.transitions, motion.animations,
       )
       const htmlPreviews = Array.from({ length: conversion.page_count }, (_, index) => join(artifact, 'preview', `page-${String(index + 1).padStart(3, '0')}.png`))
       const report = await ctx.pptRuntime.quality.evaluate(
@@ -628,7 +1162,7 @@ function pptxTool(ctx: Context) {
           rasterized_elements: conversion.rasterized_elements,
         }, exec.signal,
       )
-      return result(report, reportPath, visualReviewPath, report.conversion ?? {})
+      return result(report, reportPath, visualReviewPath, report.conversion ?? {}, motion.summary)
     },
   })
 }
@@ -767,17 +1301,19 @@ export function apply(ctx: Context): void {
     ppt_fonts: 'Inspect installed fonts in the plugin approved registry and get deterministic platform recommendations.',
     ppt_image: 'Render or capture a real PPTX to normalized per-slide PNGs and contact sheets using an internal platform adapter.',
     ppt_outline: 'Validate and atomically save the strict JSON PPT outline authored by the current agent.',
+    ppt_themes: 'List the built-in deck themes and read one palette and rhythm before the Art Direction pass.',
     python: 'Run bounded non-interactive Python for data analysis, charts, and image processing.',
   }
   for (const tool of browserTools(ctx)) ctx.tools.register(tool)
   ctx.tools.register(pythonTool(ctx))
   ctx.tools.register(imageSearchTool(ctx))
   ctx.tools.register(pptFontsTool(ctx))
+  ctx.tools.register(pptThemesTool())
   ctx.tools.register(outlineTool(ctx))
   ctx.tools.register(htmlTool(ctx))
   ctx.tools.register(pptxTool(ctx))
   ctx.tools.register(pptImageTool(ctx))
-  const implemented = new Set(['browser_click', 'browser_find', 'browser_scroll_down', 'browser_scroll_up', 'browser_visit', 'html_create', 'image_search', 'ppt_create', 'ppt_fonts', 'ppt_image', 'ppt_outline', 'python'])
+  const implemented = new Set(['browser_click', 'browser_find', 'browser_scroll_down', 'browser_scroll_up', 'browser_visit', 'html_create', 'image_search', 'ppt_create', 'ppt_fonts', 'ppt_image', 'ppt_outline', 'ppt_themes', 'python'])
   for (const toolName of PPT_TOOL_NAMES) {
     if (!implemented.has(toolName)) ctx.tools.register(unavailableTool(toolName, descriptions[toolName], {}))
   }
