@@ -8,13 +8,12 @@ import { atomicWriteJson } from './atomic.ts'
 import { PptError } from './errors.ts'
 import { resolveRegisteredFont, type DiscoveredFont } from './fonts.ts'
 import { workspaceRelative } from './paths.ts'
+import { findTheme, themeFindingsForPlan, validateTheme, type PptTheme } from './themes.ts'
 
-export const SLIDE_TYPES = ['cover', 'agenda', 'section', 'content', 'comparison', 'timeline', 'process', 'data', 'quote', 'summary', 'ending'] as const
-export const SLIDE_LAYOUTS = [
-  'cover', 'center', 'title-content', 'split', 'two-column', 'three-column', 'grid', 'hero-image',
-  'image-left', 'image-right', 'timeline-horizontal', 'timeline-vertical', 'process-horizontal',
-  'process-vertical', 'chart-focus', 'quote-focus', 'full-bleed', 'closing',
-] as const
+import { CONTENT_OPTIONAL_TYPES, SEQUENCED_TYPES, SLIDE_LAYOUTS, SLIDE_TYPE_LAYOUTS, SLIDE_TYPES } from './slide-taxonomy.ts'
+
+// Re-exported so existing importers keep one path to the taxonomy.
+export { SLIDE_LAYOUTS, SLIDE_TYPES } from './slide-taxonomy.ts'
 
 const noMarkup = (value: string): boolean => !/[\r\n]/u.test(value) && !/<\/?[a-z][^>]*>/iu.test(value)
 
@@ -87,22 +86,15 @@ const Slide = z.strictObject({
   const notes = slide.content.filter(item => item.kind === 'note')
   if (visible.length > 8) context.addIssue({ code: 'custom', path: ['content'], message: 'a slide can contain at most 8 visible items' })
   if (notes.length > 2) context.addIssue({ code: 'custom', path: ['content'], message: 'a slide can contain at most 2 notes' })
-  if (![...(['cover', 'section', 'ending'] as const)].includes(slide.type as 'cover') && visible.length === 0) {
+  if (![...CONTENT_OPTIONAL_TYPES].includes(slide.type as 'cover') && visible.length === 0) {
     context.addIssue({ code: 'custom', path: ['content'], message: `${slide.type} requires at least one visible item` })
   }
   const titleLimit = slide.type === 'cover' ? 80 : 60
   if ([...slide.title].length > titleLimit) context.addIssue({ code: 'custom', path: ['title'], message: `${slide.type} title exceeds ${titleLimit} code points` })
 
-  const allowed: Record<typeof SLIDE_LAYOUTS[number], readonly typeof SLIDE_TYPES[number][]> = {
-    cover: ['cover'], center: ['cover', 'section', 'quote', 'ending'], 'title-content': ['agenda', 'content', 'summary'],
-    split: ['content', 'comparison', 'data'], 'two-column': ['agenda', 'content', 'comparison', 'data', 'summary'],
-    'three-column': ['agenda', 'content', 'summary'], grid: ['agenda', 'content', 'data', 'summary'],
-    'hero-image': ['cover', 'section', 'content'], 'image-left': ['content', 'quote'], 'image-right': ['content', 'quote'],
-    'timeline-horizontal': ['timeline'], 'timeline-vertical': ['timeline'], 'process-horizontal': ['process'],
-    'process-vertical': ['process'], 'chart-focus': ['data'], 'quote-focus': ['quote'],
-    'full-bleed': ['cover', 'section', 'quote', 'ending'], closing: ['ending'],
+  if (!SLIDE_TYPE_LAYOUTS[slide.style.layout].includes(slide.type)) {
+    context.addIssue({ code: 'custom', path: ['style', 'layout'], message: `${slide.style.layout} is incompatible with ${slide.type}` })
   }
-  if (!allowed[slide.style.layout].includes(slide.type)) context.addIssue({ code: 'custom', path: ['style', 'layout'], message: `${slide.style.layout} is incompatible with ${slide.type}` })
   const images = slide.content.filter(item => item.kind === 'image')
   const backgrounds = images.filter(item => item.role === 'background')
   if (slide.style.background === 'image' && backgrounds.length !== 1) context.addIssue({ code: 'custom', path: ['content'], message: 'image background requires exactly one background image item' })
@@ -123,7 +115,7 @@ const Slide = z.strictObject({
     const groups = new Set(visible.flatMap(item => 'group' in item && item.group !== undefined ? [item.group] : []))
     if (groups.size < 2) context.addIssue({ code: 'custom', path: ['content'], message: 'comparison requires at least two explicit groups' })
   }
-  if (slide.type === 'timeline' || slide.type === 'process') {
+  if (SEQUENCED_TYPES.includes(slide.type)) {
     const points = slide.content.filter(item => item.kind === 'point').length
     if (points < 3 || points > 8) context.addIssue({ code: 'custom', path: ['content'], message: `${slide.type} requires 3..8 point items` })
   }
@@ -147,6 +139,53 @@ export interface OutlineWriteResult {
   fonts: string[]
   warnings: string[]
   blocking_warnings: string[]
+  /** Present only when the caller pinned the deck to a built-in theme. */
+  theme?: {
+    id: string
+    name: string
+    palette_source: string
+    accent: string
+    accent_inverted: string
+    findings: string[]
+  }
+}
+
+/**
+ * Check that an authored outline and plan still belong to the theme they name.
+ * Selecting a theme and then using unrelated colours or fonts is the failure
+ * this catches: the deck reads as neither the theme nor the brief.
+ */
+export function themeConformanceFindings(
+  theme: PptTheme,
+  outline: PptOutline,
+  designPlan: ArtDirection | undefined,
+): string[] {
+  const findings: string[] = []
+  if (designPlan === undefined) {
+    findings.push(`THEME_PLAN_MISSING: theme ${theme.id} was selected but no art_direction was supplied, so nothing enforces the theme`)
+  } else {
+    for (const finding of themeFindingsForPlan(theme, designPlan)) findings.push(`${finding.code}: ${finding.message}`)
+  }
+  const palette = new Set([
+    ...theme.palette.background, ...theme.palette.surface, ...theme.palette.text,
+    theme.palette.accent, theme.palette.accent_inverted,
+  ])
+  const families = new Set(Object.values(theme.typography).map(role => role.family))
+  for (const slide of outline) {
+    if (!palette.has(slide.style.accent)) {
+      findings.push(`THEME_ACCENT_DRIFT (page ${slide.page}): style.accent ${slide.style.accent} is not defined by theme ${theme.id}`)
+    }
+    for (const [role, family] of [['title_font', slide.style.title_font], ['body_font', slide.style.body_font]] as const) {
+      if (!families.has(family)) {
+        findings.push(`THEME_FONT_DRIFT (page ${slide.page}, ${role}): ${family} is not one of theme ${theme.id} typography families`)
+      }
+    }
+  }
+  return findings
+}
+
+export function resolveTheme(themeId: string): PptTheme {
+  return validateTheme(findTheme(themeId))
 }
 
 export interface OutlineFontResolutionOptions {
@@ -230,9 +269,11 @@ export async function writePptOutline(
   signal?: AbortSignal,
   artDirection?: unknown,
   fontResolution?: OutlineFontResolutionOptions,
+  themeId?: string,
 ): Promise<OutlineWriteResult> {
   const validatedOutline = validatePptOutline(value)
   const validatedDesignPlan = artDirection === undefined ? undefined : validateArtDirection(artDirection, validatedOutline.length)
+  const theme = themeId === undefined ? undefined : resolveTheme(themeId)
   const resolved = resolveFontPlan(validatedOutline, validatedDesignPlan, fontResolution)
   const outline = resolved.outline
   const designPlan = resolved.designPlan
@@ -256,6 +297,7 @@ export async function writePptOutline(
     }
   }
   if (designPlan !== undefined) for (const role of Object.values(designPlan.typography)) fonts.add(role.family)
+  const themeFindings = theme === undefined ? [] : themeConformanceFindings(theme, outline, designPlan)
   return {
     artifact_dir: workspaceRelative(workspace, paths.root), outline_path: workspaceRelative(workspace, paths.outline),
     ...(designPlan === undefined ? {} : { design_plan_path: workspaceRelative(workspace, paths.designPlan) }),
@@ -266,7 +308,15 @@ export async function writePptOutline(
       ...(designPlan === undefined
         ? ['ART_DIRECTION_MISSING: legacy outline created without design-plan.json']
         : artDirectionFindings(designPlan).map(finding => `${finding.code}${finding.page === undefined ? '' : ` (page ${finding.page})`}: ${finding.message}`)),
+      ...themeFindings,
     ],
     blocking_warnings: blocking,
+    ...(theme === undefined ? {} : {
+      theme: {
+        id: theme.id, name: theme.name, palette_source: theme.palette_source,
+        accent: theme.palette.accent, accent_inverted: theme.palette.accent_inverted,
+        findings: themeFindings,
+      },
+    }),
   }
 }

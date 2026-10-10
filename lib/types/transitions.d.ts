@@ -22,17 +22,10 @@ export interface SlideRhythmPage {
     type: string;
 }
 export type SlideTransitionPlan = ReadonlyMap<number, SlideTransition>;
-export interface ZipEntryInfo {
-    name: string;
-    method: number;
-    compressed_size: number;
-    uncompressed_size: number;
-    local_header_offset: number;
-}
+export { inspectZipEntries, type ZipEntryInfo } from './zip.ts';
 export declare function isSlideTransitionType(value: string): value is SlideTransitionType;
 export declare function normalizeSlideTransition(transition: SlideTransition): SlideTransition;
 export declare function transitionElementXml(transition: SlideTransition): string;
 export declare function injectSlideTransition(xml: string, transition: SlideTransition): string;
 export declare function planSlideTransitions(pages: readonly SlideRhythmPage[]): SlideTransitionPlan;
-export declare function inspectZipEntries(data: Uint8Array): ZipEntryInfo[];
 export declare function rewritePptxTransitions(data: Uint8Array, plan: SlideTransitionPlan): Uint8Array;
