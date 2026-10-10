@@ -13,6 +13,7 @@ import { isLocalFilesystemPath, isPathInside, resolveWorkspacePath, workspaceRel
 import type { SessionOwner } from './session-resources.ts'
 import { validateDeckHtmlSource } from './html.ts'
 import { rewritePptxTransitions, type SlideTransitionPlan } from './transitions.ts'
+import { rewritePptxAnimations, type AnimationPlan } from './animation.ts'
 
 export type PptFallbackMode = 'reject' | 'rasterize-element'
 
@@ -215,6 +216,7 @@ export async function createPptx(
   fallbackMode: PptFallbackMode = 'reject',
   signal?: AbortSignal,
   transitions?: SlideTransitionPlan,
+  animations?: AnimationPlan,
 ): Promise<PptCreateResult> {
   throwIfAborted(signal, 'PPT_CREATE_ABORTED')
   const [htmlPath, outlinePath, outputPath] = await Promise.all([
@@ -283,9 +285,12 @@ export async function createPptx(
     await pptx.writeFile({ fileName: temporary, compression: true })
     throwIfAborted(signal, 'PPT_CREATE_ABORTED')
     const written = new Uint8Array(await readFile(temporary))
-    // The transition plan rewrites slide parts inside the package before the atomic commit.
-    // Without a plan the bytes written by pptxgenjs are committed untouched.
-    const bytes = transitions === undefined ? written : rewritePptxTransitions(written, transitions)
+    // The transition and animation plans rewrite slide parts inside the package before
+    // the atomic commit. Without a plan the bytes written by pptxgenjs are committed
+    // untouched, so a deck that opts out stays byte-comparable with its source.
+    let bytes: Uint8Array = written
+    if (transitions !== undefined) bytes = rewritePptxTransitions(bytes, transitions)
+    if (animations !== undefined) bytes = rewritePptxAnimations(bytes, animations)
     inspectPptxPackage(bytes, outline.length)
     await atomicWriteFile(outputPath, bytes, { signal })
     return {
