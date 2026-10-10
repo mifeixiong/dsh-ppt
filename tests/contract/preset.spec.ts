@@ -138,7 +138,7 @@ describe('PPT preset contract', () => {
     expect(source).toContain('allowParallelInProgress: false')
   })
 
-  it('registers twelve package tools and denies unexpected inherited tools', () => {
+  it('registers thirteen package tools and denies unexpected inherited tools', () => {
     const fixture = toolContext()
     applyTools(fixture.context as never)
     const visible = fixture.context.tools.schemas().map(item => item.name).sort()
@@ -159,6 +159,44 @@ describe('PPT preset contract', () => {
     expect(pptFonts.parameters?.properties).toEqual(expect.objectContaining({
       text: expect.any(Object), role: expect.any(Object), layer: expect.any(Object), include_unavailable: expect.any(Object),
     }))
+    const themes = fixture.getDefinitions().get('ppt_themes') as { parameters?: { properties?: Record<string, unknown> } }
+    expect(themes.parameters?.properties).toEqual(expect.objectContaining({
+      scene: expect.any(Object), theme_id: expect.any(Object), page_types: expect.any(Object),
+    }))
+    expect(outline.parameters?.properties).toHaveProperty('theme_id')
+  })
+
+  it('serves the theme catalogue, one theme and a per-page plan through the mounted tool', async () => {
+    const fixture = toolContext()
+    applyTools(fixture.context as never)
+    const themes = fixture.getDefinitions().get('ppt_themes') as unknown as {
+      execute: (args: Record<string, unknown>, exec: unknown) => Promise<{
+        themes: Array<{ id: string; palette_source: string }>
+        theme?: { id: string; palette: { accent: string; accent_inverted: string }; decoration: string[] }
+        pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string } }>
+      }>
+    }
+
+    const catalog = await themes.execute({}, {})
+    expect(catalog.themes).toHaveLength(12)
+    expect(catalog.theme).toBeUndefined()
+    expect(catalog.themes.every(theme => theme.palette_source.length > 0)).toBe(true)
+
+    const detail = await themes.execute({ theme_id: 'carbon-blueprint' }, {})
+    expect(detail.theme?.palette.accent).toBe('#0043CE')
+    expect(detail.theme?.palette.accent_inverted).toBe('#78A9FF')
+    expect(detail.theme?.decoration.length).toBeGreaterThan(0)
+
+    const planned = await themes.execute({ theme_id: 'midnight-raise', page_types: ['cover', 'content', 'data', 'ending'] }, {})
+    expect(planned.pages).toHaveLength(4)
+    expect(planned.pages?.map(page => page.page)).toEqual([1, 2, 3, 4])
+    // The dark-first theme opens on its inverted ground, so page one must carry
+    // the inverted accent rather than the base one.
+    expect(planned.pages?.[0]?.colors.accent).toBe('#0043CE')
+
+    await expect(themes.execute({ theme_id: 'no-such-theme' }, {})).rejects.toMatchObject({ code: 'PPT_THEME_UNKNOWN' })
+    await expect(themes.execute({ page_types: ['cover'] }, {})).rejects.toMatchObject({ code: 'PPT_THEME_INVALID' })
+    await expect(themes.execute({ theme_id: 'paper-ink', page_types: [] }, {})).rejects.toMatchObject({ code: 'PPT_THEME_INVALID' })
   })
 
   it('keeps profile-level tools out of a standing PPT preset and rebound blank session', async () => {
