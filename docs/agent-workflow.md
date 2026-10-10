@@ -8,7 +8,7 @@
 
 ---
 
-## 0. 先看硬边界：PPT 模式的工具面是固定的 20 项
+## 0. 先看硬边界：PPT 模式的工具面是固定的 21 项
 
 | 工具 | 用途 |
 | :--- | :--- |
@@ -27,14 +27,15 @@
 | `browser_scroll_down` / `browser_scroll_up` | 在只读研究页里滚动 |
 | `image_search` | 免费匿名的 Openverse 检索，自动回退 Wikimedia Commons；不需要 API key |
 | `ppt_fonts` | 只读查询**插件批准注册表内当前可用**的字体（不是本机全量字体清单） |
-| `ppt_outline` | 校验大纲与 Art Direction，原子生成 `outline.json` 与 `design-plan.json` |
+| `ppt_themes` | 只读查询内置主题库：目录、单套完整配方、以及按页型展开的逐页视觉方案（构图、疏密、底色角色、标题处理、帧策略与具体色值） |
+| `ppt_outline` | 校验大纲与 Art Direction，原子生成 `outline.json` 与 `design-plan.json`；给了 `theme_id` 时同时校验主题一致性 |
 | `html_create` | 校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
 | `ppt_create` | 把 HTML 设计稿转成可编辑 PPTX；也负责 `finalize_visual_review=true` |
 | `ppt_image` | 用真实渲染器打开 PPTX，输出逐页 PNG 与联系表，并可刷新机器质量报告 |
 
 两条必须记住的限制：
 
-1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 20 项里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 20 项工具和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
+1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 21 项里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 21 项工具和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
 2. 无论角色怎么划，**能用的工具都不会超出上表**。表外工具调用不会成功。
 
 ---
@@ -105,13 +106,15 @@ ppt-output/_staging/<topic>/
 | :--- | :--- |
 | 输入 | 用户需求；材料 agent 的 `sources.md` / `facts.json`；搜图 agent 的候选池（用来判断哪几页适合上图片锚点） |
 | 输出 | `ppt-output/_staging/<topic>/frame/outline-payload.json`（slides 数组，每页恰好 `page`、`type`、`title`、`content`、`style`）与 `frame/art-direction.json`（deck 级 concept/audience_effect/palette/typography/rhythm + 逐页 Art Direction） |
-| 工具 | `read`、`write`、`ppt_fonts`、`web_search`（补背景）、`python`（配平篇幅与数据） |
+| 工具 | `read`、`write`、`ppt_themes`、`ppt_fonts`、`web_search`（补背景）、`python`（配平篇幅与数据） |
 | 写入边界 | 只写 `frame/` 子目录 |
 | 禁止 | 不调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`；不写 `deck.html`；不把候选池里的具体文件当成 `asset` 引用 |
 
 框架 agent 的稿子必须逐页写全这 8 个字段，缺一项会被 Art Direction 校验打回：
 
 `job`、`takeaway`、`composition`、`density`、`background_role`、`title_treatment`、`visual_anchor`、`frame_policy`。
+
+先用 `ppt_themes` 定主题再排页，比从零设计省事得多：传 `theme_id` 与 `page_types` 会直接返回逐页的 `composition` / `density` / `background_role` / `title_treatment` / `frame_policy` 与该页应使用的具体色值（含反色页要换用的 `accent_inverted`）。主题仍是起点：`concept`、`audience_effect` 与每页 `job`、`takeaway` 必须按实际内容自己写。需要品牌色时，用 `browser_visit` 读公开品牌规范取色，并按同一纪律自建（正文与强调色对每一层底色都 ≥4.5:1，深色页准备独立的反色强调色）。
 
 另外三条会直接触发校验失败或告警的硬约束，框架 agent 交稿前自查：
 
@@ -127,7 +130,7 @@ ppt-output/_staging/<topic>/
 | :--- | :--- |
 | 输入 | 三方产物 + 澄清结论 |
 | 输出 | `<root>/outline.json`、`design-plan.json`、`deck.html`、`deck.pptx`、`preview/**`、`report.json`、`visual-review.json` |
-| 工具 | 全部 20 项；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
+| 工具 | 全部 21 项；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
 | 写入边界 | 工件目录的唯一 owner |
 | 禁止 | 手写或手改 `outline.json` / `design-plan.json` / `deck.html` / `report.json`；手工修补 OOXML；用 `rasterize-element` 兜底（除非用户显式授权） |
 
