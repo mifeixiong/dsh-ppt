@@ -23,6 +23,15 @@ import {
 export const name = 'dsh-ppt-tools'
 export const inject = ['tools', 'pptRuntime']
 
+/**
+ * The PTC mode presentation transport. The tool registry synthesizes it into
+ * every mode-aware view (a host started with `DSH_TOOLS_MODE=ptc|both`), it is
+ * reserved against registration, and any restriction that names it is refused
+ * outright. It is therefore never a tool this preset has to deny, and never a
+ * tool another plugin registered.
+ */
+const RESERVED_PTC_TRANSPORT = 'run_code'
+
 const UNAVAILABLE_OUTPUT = {
   type: 'object',
   properties: {
@@ -1259,11 +1268,28 @@ function hostScopeOf(ctx: Context): object | undefined {
  * one. A preset fiber is not guaranteed to hold the logging service (and a
  * source-linked plugin may load a second cordis copy), so fall back instead of
  * making a diagnostic path depend on service availability.
+ *
+ * Reporting must never become the failure it reports. The logger is a cordis
+ * service on a fiber that may already be unwinding, so resolving `ctx.logger`
+ * or calling `logger.warn` can itself throw -- and a throw from here would run
+ * inside the audit's own catch handler, i.e. straight into the host's
+ * uncaught-exception path that this whole diagnostic exists to stay out of.
  */
 function warn(ctx: Context, message: string): void {
-  const logger = (ctx as { logger?: { warn?: (text: string) => void } }).logger
-  if (typeof logger?.warn === 'function') logger.warn(message)
-  else console.warn(`[dsh-ppt] ${message}`)
+  try {
+    const logger = (ctx as { logger?: { warn?: (text: string) => void } }).logger
+    if (typeof logger?.warn === 'function') {
+      logger.warn(message)
+      return
+    }
+  } catch {
+    // Fall through to the console below.
+  }
+  try {
+    console.warn(`[dsh-ppt] ${message}`)
+  } catch {
+    // A diagnostic with nowhere left to go is still better than a throw.
+  }
 }
 
 /** Register the package-owned surface. Individual executors replace these stubs as their tasks land. */
@@ -1274,9 +1300,13 @@ export function apply(ctx: Context): void {
   // ctx.tools.restrict(), so registering first can make the restriction miss
   // host tools when Cordis materializes the ordered effects.
   const allow = new Set<string>(PPT_MODE_TOOL_NAMES)
+  // The reserved PTC transport is skipped here on purpose: it is synthesized
+  // into the view rather than registered, `tools.register()` refuses the name,
+  // and `tools.restrict()` throws when a deny list names it. Passing it through
+  // would turn a documented host mode into a mount-time failure.
   const inheritedUnexpected = ctx.tools.schemas()
     .map(item => item.name)
-    .filter(toolName => !allow.has(toolName))
+    .filter(toolName => !allow.has(toolName) && toolName !== RESERVED_PTC_TRANSPORT)
   if (inheritedUnexpected.length > 0) ctx.tools.restrict({ deny: inheritedUnexpected })
 
   ctx.on('tools/pre-execute', async (exec, next) => {
@@ -1349,7 +1379,9 @@ export function apply(ctx: Context): void {
         return
       }
       const visible = ctx.tools.schemas(scope).map(item => item.name).sort()
-      const unexpected = visible.filter(toolName => !allow.has(toolName))
+      // The reserved PTC transport is part of the host's presentation, not a
+      // registration from another plugin, so it is not a divergence to report.
+      const unexpected = visible.filter(toolName => !allow.has(toolName) && toolName !== RESERVED_PTC_TRANSPORT)
       const missing = PPT_MODE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
       ctx.pptRuntime.recordToolSurface({ visible, missing, unexpected })
       if (unexpected.length > 0) {

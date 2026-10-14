@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { Context } from '@deepseek-ai/cordis'
 import { bindScopeParent, createScope, type Scope } from '@deepseek-ai/dsh-scope'
 import ToolRegistry, { type ToolDefinition } from '@deepseek-ai/dsh-tools'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { apply as applyTools } from '../../src/tools.ts'
 import { assertSupportedPlatform } from '../../src/index.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_NATIVE_TOOL_NAMES } from '../../src/schemas.ts'
@@ -11,9 +11,9 @@ interface ToolSurfaceRecord { visible: string[]; missing: string[]; unexpected: 
 
 function toolContext(
   native = [...PPT_NATIVE_TOOL_NAMES, 'glob'],
-  options: { scoped?: boolean; logger?: boolean; runtimeThrows?: boolean } = {},
+  options: { scoped?: boolean; logger?: boolean; loggerThrows?: boolean; runtimeThrows?: boolean } = {},
 ) {
-  const { scoped = true, logger = true, runtimeThrows = false } = options
+  const { scoped = true, logger = true, loggerThrows = false, runtimeThrows = false } = options
   const definitions = new Map(native.map(name => [name, { name }]))
   const denied = new Set<string>()
   const scopeSymbol = Symbol('dsh.scope')
@@ -27,7 +27,20 @@ function toolContext(
   const effectDisposers: Array<() => void> = []
   const context = {
     ...(scoped ? { [scopeSymbol]: scopeKey } : {}),
-    ...(logger ? { logger: { warn: (text: string) => warnings.push(text), error: (text: string) => errors.push(text) } } : {}),
+    ...(logger
+      ? {
+        logger: {
+          warn: (text: string) => {
+            // A logger on a fiber that is already unwinding throws the way any
+            // cordis service does. The reporter must not turn that into the
+            // failure it was only meant to describe.
+            if (loggerThrows) throw new Error('logger is not usable')
+            warnings.push(text)
+          },
+          error: (text: string) => errors.push(text),
+        },
+      }
+      : {}),
     effect(factory: () => Generator<() => void>) {
       const effect = factory()
       const yielded = effect.next()
@@ -47,8 +60,14 @@ function toolContext(
         return () => definitions.delete(definition.name)
       },
       restrict(filter: { deny?: string[] }) {
-        for (const name of filter.deny ?? []) denied.add(name)
-        return () => { for (const name of filter.deny ?? []) denied.delete(name) }
+        const deny = filter.deny ?? []
+        // The real registry refuses a restriction that names the reserved PTC
+        // transport, so the fixture refuses it too.
+        if (deny.includes('run_code')) {
+          throw new Error('tools.restrict() cannot name reserved PTC mode presentation transport "run_code"')
+        }
+        for (const name of deny) denied.add(name)
+        return () => { for (const name of deny) denied.delete(name) }
       },
       schemas() {
         return [...definitions.values()].filter(definition => !denied.has(definition.name))
@@ -338,6 +357,47 @@ describe('PPT preset contract', () => {
     expect(fixture.getWarnings().join(' | ')).toContain('ppt runtime is not usable')
     // A failed audit records nothing instead of publishing a partial surface.
     expect(fixture.getRecorded()).toBeUndefined()
+  })
+
+  it('mounts when the reserved PTC transport is part of the inherited surface', () => {
+    // A host started with DSH_TOOLS_MODE=ptc|both has `run_code` synthesized
+    // into every mode-aware view. The registry refuses any restriction that
+    // names it, so an unfiltered snapshot would turn that host mode into a
+    // mount-time failure; the preset must skip it and keep denying the rest.
+    const fixture = toolContext([...PPT_NATIVE_TOOL_NAMES, 'glob', 'run_code'])
+    expect(() => applyTools(fixture.context as never)).not.toThrow()
+
+    expect(fixture.getDenied()).toEqual(['glob'])
+    const recorded = fixture.getRecorded()
+    expect(recorded?.visible).toContain('run_code')
+    // The transport is the host's own presentation, not another plugin's tool.
+    expect(recorded?.unexpected ?? []).not.toContain('run_code')
+    expect(fixture.getWarnings().join(' | ')).not.toContain('run_code')
+  })
+
+  it('never lets the reporter itself become the failure it reports', async () => {
+    // warn() is called from the audit's catch handler, so a logger that throws
+    // while its fiber unwinds would escape exactly where the guard cannot
+    // follow -- the same uncaught-exception path that killed the host.
+    const fixture = toolContext(undefined, { scoped: false, loggerThrows: true })
+    const fallback = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    try {
+      expect(() => applyTools(fixture.context as never)).not.toThrow()
+
+      const escaping = captureEscapingExceptions()
+      try {
+        fixture.triggerToolChange()
+        await settleMicrotasks()
+      } finally {
+        escaping.stop()
+      }
+
+      expect(escaping.captured).toEqual([])
+      expect(fixture.getWarnings()).toEqual([])
+      expect(fallback.mock.calls.flat().join(' | ')).toContain('tool-surface audit')
+    } finally {
+      fallback.mockRestore()
+    }
   })
 
   it('requires approval before native office automation but not LibreOffice', async () => {
