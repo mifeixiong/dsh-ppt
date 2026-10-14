@@ -9,8 +9,11 @@ import { PPT_MODE_TOOL_NAMES, PPT_NATIVE_TOOL_NAMES } from '../../src/schemas.ts
 
 interface ToolSurfaceRecord { visible: string[]; missing: string[]; unexpected: string[] }
 
-function toolContext(native = [...PPT_NATIVE_TOOL_NAMES, 'glob'], options: { scoped?: boolean; logger?: boolean } = {}) {
-  const { scoped = true, logger = true } = options
+function toolContext(
+  native = [...PPT_NATIVE_TOOL_NAMES, 'glob'],
+  options: { scoped?: boolean; logger?: boolean; runtimeThrows?: boolean } = {},
+) {
+  const { scoped = true, logger = true, runtimeThrows = false } = options
   const definitions = new Map(native.map(name => [name, { name }]))
   const denied = new Set<string>()
   const scopeSymbol = Symbol('dsh.scope')
@@ -52,7 +55,13 @@ function toolContext(native = [...PPT_NATIVE_TOOL_NAMES, 'glob'], options: { sco
       },
     },
     pptRuntime: {
-      recordToolSurface(value: unknown) { recorded = value; recordCount += 1 },
+      recordToolSurface(value: unknown) {
+        // Model a host runtime that is not usable at this instant. The audit's
+        // caller must contain the failure either way.
+        if (runtimeThrows) throw new Error('ppt runtime is not usable')
+        recorded = value
+        recordCount += 1
+      },
     },
   }
   return {
@@ -304,6 +313,30 @@ describe('PPT preset contract', () => {
       escaping.stop()
     }
     expect(escaping.captured).toEqual([])
+    expect(fixture.getRecorded()).toBeUndefined()
+  })
+
+  it('contains an error raised inside the audit instead of letting it abort the mount', async () => {
+    // The audit runs once synchronously while the effect starts and again from a
+    // queued microtask. Both call sites share one contract: nothing the audit
+    // throws may reach the host's uncaught-exception path, because DSH answers an
+    // escaping exception by disposing the root cordis fiber, which kills the
+    // application mid-boot. The deferred call was guarded first; the synchronous
+    // bootstrap call used to be the hole that could still take the host down.
+    const fixture = toolContext(undefined, { runtimeThrows: true })
+    expect(() => applyTools(fixture.context as never)).not.toThrow()
+
+    const escaping = captureEscapingExceptions()
+    try {
+      fixture.triggerToolChange()
+      await settleMicrotasks()
+    } finally {
+      escaping.stop()
+    }
+
+    expect(escaping.captured).toEqual([])
+    expect(fixture.getWarnings().join(' | ')).toContain('ppt runtime is not usable')
+    // A failed audit records nothing instead of publishing a partial surface.
     expect(fixture.getRecorded()).toBeUndefined()
   })
 

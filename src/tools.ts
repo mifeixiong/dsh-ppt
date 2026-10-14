@@ -1362,7 +1362,21 @@ export function apply(ctx: Context): void {
       }
     }
 
-    audit()
+    // Both call sites below share one contract: an error raised while auditing
+    // is a diagnostic failure, never a mount failure. The bootstrap call runs
+    // synchronously inside this effect, so an escaping throw aborts the preset
+    // fiber and reaches the host's fail-loud path exactly like the deferred call
+    // once did. Contain it once, here, instead of only on the queued path.
+    const runAudit = () => {
+      try {
+        audit()
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        warn(ctx, `PPT tool-surface audit failed: ${message}`)
+      }
+    }
+
+    runAudit()
     let scheduled = false
     const dispose = ctx.on('tools/change', () => {
       if (scheduled) return
@@ -1370,14 +1384,7 @@ export function apply(ctx: Context): void {
       queueMicrotask(() => {
         if (!active) return
         scheduled = false
-        // Last-resort guard: nothing thrown by the audit may escape into the
-        // host's uncaught-exception path (see the note above).
-        try {
-          audit()
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-          warn(ctx, `PPT tool-surface audit failed: ${message}`)
-        }
+        runAudit()
       })
     })
     yield () => {
