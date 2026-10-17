@@ -1,4 +1,14 @@
-/** DeepSeek Harness host-plane entry for the PPT design plugin. */
+/*!
+ * DSH PPT — host-plane entry for the PPT design plugin.
+ *
+ * Maintained fork / default install source : https://github.com/mifeixiong/dsh-ppt
+ * Source fork (upstream, sync-only)        : https://github.com/yejiming/dsh-ppt
+ *
+ * Policy: changes land on this fork's main branch and are published from there;
+ * no pull requests are sent upstream. Keep this header in step with
+ * package.json (repository / homepage / bugs / upstream / dsh.install)
+ * and dsh-plugin.json (source.repository).
+ */
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent-preset-registry'
 import type {} from '@deepseek-ai/dsh-sandbox'

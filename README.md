@@ -7,11 +7,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/yejiming/dsh-ppt?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/github/stars/mifeixiong/dsh-ppt?style=flat-square" alt="Stars">
   &nbsp;
-  <img src="https://img.shields.io/github/stars/yejiming/dsh-ppt?style=flat-square" alt="Stars">
-  &nbsp;
-  <img src="https://img.shields.io/npm/v/@yejiming%2Fdsh-ppt?style=flat-square&label=npm" alt="npm">
+  <img src="https://img.shields.io/badge/fork%20of-yejiming%2Fdsh-ppt-8A2BE2?style=flat-square" alt="Fork of yejiming/dsh-ppt">
   &nbsp;
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
 </p>
@@ -22,9 +20,19 @@
 
 <p align="center">
 
-[产品亮点](#产品亮点) · [快速上手](#快速上手) · [依赖与环境要求](#依赖与环境要求) · [内置主题库](#内置主题库) · [放映动效与字体](#放映动效与字体) · [使用场景](#使用场景) · [产物说明](#产物说明) · [多 Agent 协作流程](#多-agent-协作流程) · [常见问题](#常见问题) · [开源协议](#开源协议)
+[产品亮点](#产品亮点) · [快速上手](#快速上手) · [依赖与环境要求](#依赖与环境要求) · [内置主题库](#内置主题库) · [放映动效与字体](#放映动效与字体) · [使用场景](#使用场景) · [产物说明](#产物说明) · [多 Agent 协作流程](#多-agent-协作流程) · [常见问题](#常见问题) · [参考项目](#参考项目与致谢) · [开源协议](#开源协议)
 
 </p>
+
+## 源 fork 与上游
+
+> **本仓库是 [yejiming/dsh-ppt](https://github.com/yejiming/dsh-ppt) 的维护 fork。**
+>
+> 当前的**默认安装源与插件头声明的上游**是 [mifeixiong/dsh-ppt](https://github.com/mifeixiong/dsh-ppt)：`package.json` 的 `repository` / `homepage` / `bugs` / `dsh.install`、`dsh-plugin.json` 的 `source.repository`，以及入口源码 `src/index.ts` / 构建产物 `lib/index.mjs` 里的头部声明，全部指向它。
+>
+> 本 fork 的改动只并入自己的 `main` 并推送，**不向上游提 PR**；上游仓库仅作为同步来源。
+>
+> 包名 `@yejiming/dsh-ppt` 与插件 id `io.github.yejiming.dsh-ppt` 保留上游标识，作为可直接替换（drop-in）的兼容名；本 fork 未发布到 npm，安装走 GitHub 规格。
 
 ## 产品亮点
 
@@ -53,12 +61,15 @@
 
 ### 2. 快速安装
 
-在终端执行以下命令直接从 npm 安装插件：
+本 fork 未发布到 npm，直接从 GitHub 仓库安装（`dsh plugin add` 接受 `github:` 规格）：
 
 ```bash
-# 通过 DSH 插件管理器直接安装
-dsh plugin --profile web add @yejiming/dsh-ppt
-dsh plugin --profile headless add @yejiming/dsh-ppt
+# 通过 DSH 插件管理器安装，web / headless profile 都适用
+dsh plugin --profile web add github:mifeixiong/dsh-ppt
+dsh plugin --profile headless add github:mifeixiong/dsh-ppt
+
+# 需要可复现的安装时，钉到具体提交（本机三个 profile 就是钉提交的）
+dsh plugin --profile web add github:mifeixiong/dsh-ppt#<commit-sha>
 ```
 
 ### 3. 开始创作
@@ -373,6 +384,46 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 2. **本地自由编辑**：直接打开 <code>deck.pptx</code>，像普通 PPT 一样随意修改文字、替换图片或移动排版位置。
 </details>
 
+## 参考项目与致谢
+
+本插件不是从零手搓：下表只列**真正进入产物**的第三方项目与被直接沿用的公开资料（在 `src/` 里可逐一核对），没列出的就是没用。
+
+### 运行时依赖（确实在被 import）
+
+| 项目 | 版本 | 在本插件里的作用 |
+| --- | --- | --- |
+| [PptxGenJS](https://github.com/gitbrent/PptxGenJS) | `4.0.1` | 生成原生可编辑 PPTX 的主引擎（文字 / 形状 / 图表 / 表格）；入场动画与转场在它写出包之后按 XML 级注入 |
+| [fflate](https://github.com/101arrowz/fflate) | `0.8.3` | PPTX 包（zip）的解包与重写、deflate 压缩 |
+| [fontkit](https://github.com/foliojs/fontkit) | `2.0.4` | 本机字体枚举、PANOSE / 字距族 / 嵌入许可解析 |
+| [happy-dom](https://github.com/capricorn86/happy-dom) | `20.0.11` | HTML 幻灯片校验用的 DOM 实现；按需 `import()`，不让宿主启动变重 |
+| [playwright-core](https://github.com/microsoft/playwright) | `1.62.1` | 只读研究页的浏览 / 点击 / 滚动与截图 |
+| [sharp](https://github.com/lovell/sharp) | `^0.35.3`（可选 peer，复用 DSH 宿主单例） | 图像处理与规格化 |
+| [zod](https://github.com/colinhacks/zod) / [schemastery](https://github.com/shigma/schemastery) | `4.4.3` / `3.18.0` | 工件契约与插件配置的 schema 校验 |
+
+> 第三方依赖各自保留原始许可（PptxGenJS / fflate / fontkit / happy-dom / zod 为 MIT，playwright 与 sharp 为 Apache-2.0）；本仓库不复制、不分发它们的源码，只以依赖形式引用。
+
+### 外部程序（非代码依赖，按平台回退）
+
+| 来源 | 作用 |
+| --- | --- |
+| Microsoft PowerPoint / Apple Keynote | 高保真回渲与逐页视觉审稿的主后端 |
+| LibreOffice（Windows / Linux 回退时另需 Poppler `pdftoppm`） | 跨平台回渲兜底 |
+| Python 3（本机解释器，受 DSH sandbox 与超时约束） | 数据图表与图像分析 |
+| Openverse、Wikimedia Commons | `image_search` 的免版权配图主源与兜底源 |
+
+### 被直接沿用的公开设计资料
+
+| 来源 | 用途 |
+| --- | --- |
+| IBM Carbon、Tailwind CSS、Radix Colors、Microsoft Fluent 2 的公开色板 | 12 套内置主题的取色依据 |
+| WCAG 2.1 AA（≥4.5:1） | 每层底色 × 正文 / 强调色对比度的实算校验标准 |
+
+### 宿主 SDK
+
+`@deepseek-ai/*`（`cordis`、`dsh-agent-preset-registry`、`dsh-agent-preset`、`dsh-sandbox`、`dsh-subprocess`、`dsh-tools` 等）是 DeepSeek Harness 的宿主契约，以 `peerDependencies` 声明（`^0.2.0-rc.2`），不随本插件分发。
+
 ## 开源协议
 
 本项目基于 [MIT License](LICENSE) 开源。
+
+本仓库是 [yejiming/dsh-ppt](https://github.com/yejiming/dsh-ppt) 的 fork：原始著作权归上游作者，本 fork 的修改同样以 MIT 发布。内置主题的色值取自 IBM Carbon / Tailwind CSS / Radix Colors / Microsoft Fluent 2 的公开色板；第三方运行时依赖各自保留原始许可（见[参考项目与致谢](#参考项目与致谢)）。

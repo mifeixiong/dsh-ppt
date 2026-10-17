@@ -3,7 +3,7 @@
   "manifestVersion": "0.15",
   "id": "io.github.yejiming.dsh-ppt",
   "name": "DSH PPT",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "facets": {
     "host": {
       "entry": "lib/index.mjs",
@@ -22,7 +22,7 @@
   "subscriptions": [],
   "license": "MIT",
   "source": {
-    "repository": "https://github.com/yejiming/dsh-ppt"
+    "repository": "https://github.com/mifeixiong/dsh-ppt"
   },
   "overrides": [
     {

@@ -1,14 +1,19 @@
 {
   "name": "@yejiming/dsh-ppt",
   "description": "PPT design preset and editable PPTX production tools for DeepSeek Harness",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yejiming/dsh-ppt.git"
+    "url": "https://github.com/mifeixiong/dsh-ppt.git"
   },
-  "homepage": "https://github.com/yejiming/dsh-ppt#readme",
+  "homepage": "https://github.com/mifeixiong/dsh-ppt#readme",
   "bugs": {
-    "url": "https://github.com/yejiming/dsh-ppt/issues"
+    "url": "https://github.com/mifeixiong/dsh-ppt/issues"
+  },
+  "upstream": {
+    "type": "git",
+    "url": "https://github.com/yejiming/dsh-ppt.git",
+    "note": "Source fork. This fork is the maintained distribution: changes land on its own main and are published from here; no upstream pull requests are sent."
   },
   "type": "module",
   "main": "lib/index.mjs",
@@ -51,6 +56,12 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "install": {
+      "preferred": "git",
+      "git": "https://github.com/mifeixiong/dsh-ppt.git",
+      "tarball": "https://github.com/mifeixiong/dsh-ppt/archive/refs/heads/main.tar.gz",
+      "zip": "https://github.com/mifeixiong/dsh-ppt/archive/refs/heads/main.zip"
     }
   },
   "scripts": {

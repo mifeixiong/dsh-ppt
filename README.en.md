@@ -7,11 +7,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/v/release/yejiming/dsh-ppt?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/github/stars/mifeixiong/dsh-ppt?style=flat-square" alt="Stars">
   &nbsp;
-  <img src="https://img.shields.io/github/stars/yejiming/dsh-ppt?style=flat-square" alt="Stars">
-  &nbsp;
-  <img src="https://img.shields.io/npm/v/@yejiming%2Fdsh-ppt?style=flat-square&label=npm" alt="npm">
+  <img src="https://img.shields.io/badge/fork%20of-yejiming%2Fdsh-ppt-8A2BE2?style=flat-square" alt="Fork of yejiming/dsh-ppt">
   &nbsp;
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
 </p>
@@ -22,9 +20,19 @@
 
 <p align="center">
 
-[Highlights](#highlights) · [Quick Start](#quick-start) · [Dependencies and requirements](#dependencies-and-requirements) · [Built-in theme library](#built-in-theme-library) · [Motion and fonts](#motion-and-fonts) · [Use Cases](#use-cases) · [Output Files](#output-files) · [Multi-Agent Workflow](#multi-agent-workflow) · [FAQ](#faq) · [License](#license)
+[Highlights](#highlights) · [Quick Start](#quick-start) · [Dependencies and requirements](#dependencies-and-requirements) · [Built-in theme library](#built-in-theme-library) · [Motion and fonts](#motion-and-fonts) · [Use Cases](#use-cases) · [Output Files](#output-files) · [Multi-Agent Workflow](#multi-agent-workflow) · [FAQ](#faq) · [Reference projects](#reference-projects-and-credits) · [License](#license)
 
 </p>
+
+## Source fork and upstream
+
+> **This repository is a maintained fork of [yejiming/dsh-ppt](https://github.com/yejiming/dsh-ppt).**
+>
+> The **default install source and the upstream declared by the plugin head** is [mifeixiong/dsh-ppt](https://github.com/mifeixiong/dsh-ppt): `repository` / `homepage` / `bugs` / `dsh.install` in `package.json`, `source.repository` in `dsh-plugin.json`, and the header declared in `src/index.ts` / the built `lib/index.mjs` all point there.
+>
+> Changes land on this fork's `main` and are pushed from there — **no pull requests are sent upstream**; the upstream repository is a sync source only.
+>
+> The package name `@yejiming/dsh-ppt` and the plugin id `io.github.yejiming.dsh-ppt` keep the upstream identifiers as a drop-in compatible name. This fork is not published to npm; install it from GitHub.
 
 ## Highlights
 
@@ -53,12 +61,15 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 ### 2. Installation
 
-Run the following commands to install the plugin directly from npm:
+This fork is not published to npm; install it straight from the GitHub repository (`dsh plugin add` accepts `github:` specs):
 
 ```bash
-# Install directly via DSH plugin manager
-dsh plugin --profile web add @yejiming/dsh-ppt
-dsh plugin --profile headless add @yejiming/dsh-ppt
+# Install via DSH plugin manager (works for the web and headless profiles)
+dsh plugin --profile web add github:mifeixiong/dsh-ppt
+dsh plugin --profile headless add github:mifeixiong/dsh-ppt
+
+# Pin a commit when the install must be reproducible (the profiles on this machine do exactly that)
+dsh plugin --profile web add github:mifeixiong/dsh-ppt#<commit-sha>
 ```
 
 ### 3. Start Creating
@@ -367,6 +378,46 @@ You have two flexible options:
 2. **Edit Locally**: Open <code>deck.pptx</code> directly and modify text, swap images, or tweak layouts like any standard slide deck.
 </details>
 
+## Reference projects and credits
+
+This plugin is not built from scratch. The table below lists only the third-party projects and public design references that **actually made it into the product** (each one is verifiable in `src/`); anything not listed is not used.
+
+### Runtime dependencies (really imported)
+
+| Project | Version | Role in this plugin |
+| --- | --- | --- |
+| [PptxGenJS](https://github.com/gitbrent/PptxGenJS) | `4.0.1` | Main engine for native, editable PPTX output (text / shapes / charts / tables); entrance animations and transitions are injected at XML level after it writes the package |
+| [fflate](https://github.com/101arrowz/fflate) | `0.8.3` | Unpacking and rewriting the PPTX (zip) package, deflate compression |
+| [fontkit](https://github.com/foliojs/fontkit) | `2.0.4` | Enumerating installed fonts, PANOSE / spacing class / embedding-permission parsing |
+| [happy-dom](https://github.com/capricorn86/happy-dom) | `20.0.11` | DOM used to validate HTML slides; imported on demand so host startup stays light |
+| [playwright-core](https://github.com/microsoft/playwright) | `1.62.1` | Read-only research pages: visit / click / scroll and screenshot |
+| [sharp](https://github.com/lovell/sharp) | `^0.35.3` (optional peer, uses the DSH host singleton) | Image processing and normalisation |
+| [zod](https://github.com/colinhacks/zod) / [schemastery](https://github.com/shigma/schemastery) | `4.4.3` / `3.18.0` | Schema validation for artifact contracts and plugin config |
+
+> Each dependency keeps its own licence (PptxGenJS / fflate / fontkit / happy-dom / zod are MIT; playwright and sharp are Apache-2.0). This repository does not copy or redistribute their source; it only depends on them.
+
+### External programs (not code dependencies; platform fallbacks)
+
+| Source | Role |
+| --- | --- |
+| Microsoft PowerPoint / Apple Keynote | Primary backend for high-fidelity re-render and per-slide visual review |
+| LibreOffice (plus Poppler `pdftoppm` on the Windows / Linux fallback path) | Cross-platform render fallback |
+| Python 3 (local interpreter, bounded by the DSH sandbox and timeouts) | Data charts and image analysis |
+| Openverse, Wikimedia Commons | Primary and fallback sources for royalty-free images in `image_search` |
+
+### Public design references used directly
+
+| Source | Use |
+| --- | --- |
+| Public palettes of IBM Carbon, Tailwind CSS, Radix Colors and Microsoft Fluent 2 | Colour sources for the 12 built-in themes |
+| WCAG 2.1 AA (≥4.5:1) | The measured contrast rule applied to every background × body / accent colour pair |
+
+### Host SDK
+
+The `@deepseek-ai/*` packages (`cordis`, `dsh-agent-preset-registry`, `dsh-agent-preset`, `dsh-sandbox`, `dsh-subprocess`, `dsh-tools`, …) are the DeepSeek Harness host contract. They are declared as `peerDependencies` (`^0.2.0-rc.2`) and are not shipped with this plugin.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+This repository is a fork of [yejiming/dsh-ppt](https://github.com/yejiming/dsh-ppt): the original copyright stays with the upstream author, and this fork's changes are released under MIT as well. Built-in theme colours are drawn from the public palettes of IBM Carbon, Tailwind CSS, Radix Colors and Microsoft Fluent 2; third-party runtime dependencies keep their own licences (see [Reference projects and credits](#reference-projects-and-credits)).
