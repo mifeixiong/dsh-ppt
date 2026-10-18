@@ -42,7 +42,7 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 - 📝 **Truly Native & Editable**: Generates standard `.pptx` files rather than whole-page images. Texts, shapes, and charts can be freely edited and adjusted in Microsoft PowerPoint, Apple Keynote, or WPS.
 - 🎨 **Professional Aesthetics & Layouts**: No more cookie-cutter templates. AI intelligently tailors color schemes, typography hierarchies, and page compositions for a polished business look.
-- 🎭 **12 Built-in Themes**: Each theme is a verified design recipe — colours drawn from IBM Carbon, Tailwind, Radix and Microsoft Fluent 2, gradients adapted from curated Color Hunt and uiGradients palettes, fonts restricted to families this machine really renders, plus motion rhythm, type treatment, signature device, anti-patterns and per-page layout notes. Pick one with `ppt_themes`; every palette and gradient is checked against WCAG AA (≥4.5:1) by machine, and the page ground (including native gradients) survives into the PPTX.
+- 🎭 **12 Built-in Themes**: Each theme is a verified design recipe — colours drawn from IBM Carbon, Tailwind, Radix and Microsoft Fluent 2, gradients adapted from curated Color Hunt and uiGradients palettes, fonts restricted to families this machine really renders, plus motion rhythm, type treatment, signature device, anti-patterns and per-page layout notes. A library of 15 generative SVG motifs (concentric circles, halftone, HUD, tick circle, barcode, waves, dot matrix, polygon mesh, contours, wireframe globe, rays and more) renders in the theme palette on demand. Pick one with `ppt_themes`; every palette and gradient is checked against WCAG AA (≥4.5:1) by machine, and the page ground (including native gradients) survives into the PPTX.
 - 📈 **Smart Charts & Curated Visuals**: Automatically searches for royalty-free commercial images and plots high-resolution data charts using Python, replacing walls of text with engaging visuals.
 - 👁️ **AI Closed-Loop Visual Review**: The AI renders and visually inspects the generated PPT, proactively detecting and fixing text overflows, overlapping elements, or layout flaws.
 - ✨ **Slide Motion**: Per-page entrance animation for text and shapes — 29 effects covering fades, fly-ins, zooms, spins, and wipes, with per-paragraph builds, click-step sequencing, and slide transitions.
@@ -269,6 +269,7 @@ Colours are not improvised: every palette traces to a published design system or
 - `decoration` / `avoid` — permitted moves and the habits that would break the theme, both written as CSS-level instructions
 - `image_treatment` — how photography, screenshots and generated assets are cropped, toned and scrimmed so assets cannot derail the layout
 - `gradients` — zero to two linear gradients per theme, with angle, stops, tonal group, page cap and solid fallback; only cover, section, quote and ending pages may use one, at most two pages per deck
+- `motifs` — two or three generative decoration patterns this theme permits, with placement advice; add `motif_id` to get the rendered self-contained SVG for the base and inverse tonal groups
 
 The page ground lives on the `.ppt-slide` element; solid colours and theme gradients are exported as a **native PPTX slide background** (not a raster layer), so the HTML preview and PowerPoint agree and the gradient stays an editable vector fill.
 
@@ -279,8 +280,17 @@ ppt_themes()                                              # list every theme wit
 ppt_themes(scene="fundraising")                           # filter by scene
 ppt_themes(theme_id="carbon-blueprint")                   # read the full recipe
 ppt_themes(theme_id="carbon-blueprint", page_types=[...])  # per-page visual plan
+ppt_themes(theme_id="carbon-blueprint", motif_id="square-grid")  # render a motif SVG
 ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 ```
+
+### Generative decoration motifs
+
+Decoration is no longer limited to circles, lines and rectangles. `ppt_themes(theme_id, motif_id=...)` renders 15 self-contained SVG families in the theme palette and returns `svg_base` (light group) and `svg_inverse` (inverted group):
+
+concentric circles · halftone dots · HUD lines · tick circle · barcode · wave texture · repeating lines · dot matrix · polygon mesh · contour lines · common shapes · nested polygons · wireframe globe · square grid · radial rays
+
+The generation principle matches the reference pattern tools: **deterministic geometry + the theme palette + scalable SVG**, not random bitmaps. Each motif uses only `circle / line / rect / path / polygon` — no filter, mask, pattern, foreignObject, script or external reference — so it passes the HTML whitelist and stays vector inside the PPTX. One motif per page at most, in a corner, edge or background layer, never behind body copy; two or three pages per deck is enough.
 
 Passing `theme_id` to `ppt_outline` checks conformance and reports every drift instead of passing silently: `THEME_PALETTE_DRIFT`, `THEME_ACCENT_REPLACED`, `THEME_TYPOGRAPHY_REPLACED`, `THEME_ACCENT_DRIFT`, `THEME_FONT_DRIFT`, and `THEME_PLAN_MISSING` when a theme was named but no `art_direction` was supplied.
 
@@ -300,6 +310,7 @@ To follow a client brand instead, read its public style guide with `browser_visi
 - Rules (1px / 2px) keep 24px clear of any text baseline and never run through a title or subtitle
 - Text rotation is limited to a pure `rotate` (±8°, centered origin, no scale/skew/translate), used only on short labels or single words, at most twice per deck; it enters the PPTX as a native shape rotation, so preview and deck agree
 - Low-opacity ghost text (0.06–0.18) is allowed as a background layer — real editable text, z-index below the headline, at most one bilingual ghost pair per page
+- One generative motif per page at most, in a corner/edge/background layer, never behind body copy; use the SVG returned by `ppt_themes(theme_id, motif_id=...)` instead of hand-writing complex SVG, and keep it to two or three pages per deck
 - `box-shadow`, `filter`, `clip-path` and `content` are rejected outright, so depth comes from borders and tonal steps and the HTML preview cannot diverge from the PPTX
 
 ## Motion and fonts

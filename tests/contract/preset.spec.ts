@@ -199,18 +199,20 @@ describe('PPT preset contract', () => {
     applyTools(fixture.context as never)
     const themes = fixture.getDefinitions().get('ppt_themes') as unknown as {
       execute: (args: Record<string, unknown>, exec: unknown) => Promise<{
-        themes: Array<{ id: string; palette_source: string; signature: string; poster_move: string; gradient: string }>
+        themes: Array<{ id: string; palette_source: string; signature: string; poster_move: string; motif: string; gradient: string }>
         theme?: {
           id: string
           palette: { accent: string; accent_inverted: string }
           decoration: string[]
           signature: string
           poster_moves: string[]
+          motifs: Array<{ id: string; name: string; width: number; height: number; placement: string }>
           avoid: string[]
           type_treatment: { label_tracking: string }
           gradients: Array<{ name: string; css: string; fallback: string }>
         }
         pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string }; poster_move?: string; gradient?: { css: string } }>
+        motif?: { id: string; name: string; svg_base: string; svg_inverse: string; width: number; height: number }
       }>
     }
 
@@ -220,6 +222,7 @@ describe('PPT preset contract', () => {
     expect(catalog.themes.every(theme => theme.palette_source.length > 0)).toBe(true)
     expect(catalog.themes.every(theme => theme.signature.length > 0)).toBe(true)
     expect(catalog.themes.every(theme => theme.poster_move.length > 0)).toBe(true)
+    expect(catalog.themes.every(theme => theme.motif.length > 0)).toBe(true)
 
     const detail = await themes.execute({ theme_id: 'carbon-blueprint' }, {})
     expect(detail.theme?.palette.accent).toBe('#0B57D0')
@@ -228,7 +231,14 @@ describe('PPT preset contract', () => {
     expect(detail.theme?.avoid.length).toBeGreaterThan(0)
     expect(detail.theme?.type_treatment.label_tracking).toBe('0.16em')
     expect(detail.theme?.poster_moves).toHaveLength(3)
+    expect(detail.theme?.motifs.length).toBeGreaterThanOrEqual(2)
     expect(detail.theme?.gradients).toEqual([])
+    const motif = await themes.execute({ theme_id: 'carbon-blueprint', motif_id: 'square-grid' }, {})
+    expect(motif.motif?.svg_base).toContain('<svg')
+    expect(motif.motif?.svg_base).toContain('line')
+    expect(motif.motif?.svg_inverse).toContain('<svg')
+    await expect(themes.execute({ theme_id: 'carbon-blueprint', motif_id: 'not-a-motif' }, {}))
+      .rejects.toMatchObject({ code: 'PPT_THEME_INVALID' })
 
     const planned = await themes.execute({ theme_id: 'midnight-raise', page_types: ['cover', 'content', 'data', 'ending'] }, {})
     expect(planned.pages).toHaveLength(4)

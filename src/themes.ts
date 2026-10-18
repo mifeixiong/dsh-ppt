@@ -1,6 +1,7 @@
 import { ART_BACKGROUNDS, ART_COMPOSITIONS, ART_DENSITIES, ART_FRAME_POLICIES, ART_TITLE_TREATMENTS, type ArtDirection } from './art-direction.ts'
 import { PptError } from './errors.ts'
 import { registeredFont } from './fonts.ts'
+import { MOTIF_IDS } from './motifs.ts'
 import { SLIDE_TYPES } from './slide-taxonomy.ts'
 
 /**
@@ -124,6 +125,8 @@ export interface PptTheme {
   image_treatment: string
   /** The theme's permitted gradients. Most themes carry none or one. */
   gradients: readonly ThemeGradient[]
+  /** Generative SVG motifs this theme may use; the catalogue renders them. */
+  motifs: readonly string[]
   /** What each composition means inside this theme. */
   layout_notes: Readonly<Partial<Record<ArtComposition, string>>>
 }
@@ -313,6 +316,14 @@ export function validateTheme(theme: PptTheme): PptTheme {
       throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} gradient "${gradient.name}" max_pages must be 1..3`)
     }
   }
+  if (theme.motifs.length < 1 || theme.motifs.length > 4) {
+    throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} needs 1..4 motifs`)
+  }
+  for (const [index, motif] of theme.motifs.entries()) {
+    if (!MOTIF_IDS.includes(motif)) {
+      throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} motif[${index}] is unknown: ${motif}`)
+    }
+  }
   if (theme.composition_cycle.length === 0) {
     throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} needs at least one composition`)
   }
@@ -345,6 +356,8 @@ export interface ThemeSummary {
   body_font: string
   signature: string
   poster_move: string
+  /** Bilingual name of the theme's lead generative motif. */
+  motif: string
   gradient: string
 }
 
@@ -360,6 +373,7 @@ const USAGE = [
   'Call ppt_themes with theme_id and page_types to get the visual half of the plan for every page: composition, density, background role, title treatment, frame policy, the exact colours that page should use, and the one page-local gradient when the theme permits it.',
   'layout_notes, poster_moves, decoration, avoid, type_treatment and signature say how each composition is built, which bold display move a poster page may use, which ornament this theme permits and which habits would break it, so the HTML follows the recipe instead of inventing one.',
   'When a page carries a poster_move, that move governs the display layer and wins over the layout note; the layout note still describes the content structure beneath it.',
+  'The catalogue also renders each theme motif into self-contained SVG for the base and inverse tonal groups; embed one as an <svg data-ppt-id data-ppt-kind="svg"> leaf at the suggested size, and never place a motif behind body copy.',
   'Every palette traces to a published design system or a public palette source, named in palette_source. When the deck must follow a client brand instead, read the brand palette from its public style guide with browser_visit, then build the plan on those values and keep the same contrast discipline: body text and accent at 4.5:1 or better against every background, surface and gradient stop, and a separate accent for the inverted tonal group.',
 ].join(' ')
 
@@ -376,6 +390,7 @@ export function themeSummary(theme: PptTheme): ThemeSummary {
     body_font: theme.typography.body.family,
     signature: theme.signature,
     poster_move: theme.poster_moves[0]!,
+    motif: theme.motifs[0]!,
     gradient: theme.gradients[0]?.name ?? '',
   }
 }
@@ -663,6 +678,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — vertical margin: one keyword set one character per line in a 1em-wide box against the 1px margin rule; rotate the coordinate label 5°.',
       'Poster C — metric poster: a 240px number in the latin face with a 32px caption; the title drops to 44px.',
     ],
+    motifs: ['square-grid', 'hud-lines', 'tick-circle'],
     signature: 'A 1px blueprint margin that only appears in the outer 72px of the page.',
     composition_cycle: ['hero', 'editorial-split', 'process', 'data-focus', 'asymmetric-split', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'base', 'accent'],
@@ -726,6 +742,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — stacked figures: three 96px numbers in a vertical column, each with a 16px label; the title at 44px.',
       'Poster C — ghost verdict: “LEDGER / 账本” at 120px and 10% ink behind a 72px title, with the Q3 label rotated −5°.',
     ],
+    motifs: ['barcode', 'repeat-lines', 'square-grid'],
     signature: 'A brass rule under the deck title and nowhere else.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'process', 'layered', 'closing'],
     background_cycle: ['base', 'base', 'base', 'inverse', 'base', 'base'],
@@ -789,6 +806,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — valuation poster: a 240px figure on the right, a 44px title on the left, one hairline between.',
       'Poster C — ghost conviction: “RAISE / 融资” at 120px and 10% white behind the 72px title; rotate the eyebrow 6°.',
     ],
+    motifs: ['wireframe-globe', 'radial-rays', 'contour-lines'],
     signature: 'A single aurora gradient field on the cover and closing only.',
     composition_cycle: ['hero', 'quote', 'full-bleed', 'editorial-split', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'accent', 'inverse', 'base', 'base'],
@@ -861,6 +879,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — opening quote: a 320px serif quotation mark at 10% ink behind a 64px title, plus a vertical ghost “PAPER” at 8%.',
       'Poster C — paper block: a 72px title overlapping a 40%-width surface block, with the block lower half visible.',
     ],
+    motifs: ['wave-texture', 'contour-lines', 'nested-polygons'],
     signature: 'A warm paper gradient that reads as uncoated stock, never as a tech gradient.',
     composition_cycle: ['hero', 'editorial-split', 'quote', 'process', 'full-bleed', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],
@@ -933,6 +952,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — micro/macro: a 16px tracked abstract in a 300px column on the left, a 160px serif keyword on the right.',
       'Poster C — rule and numeral: a 96px section number above a 2px rule, the title below the rule.',
     ],
+    motifs: ['square-grid', 'barcode', 'contour-lines'],
     signature: 'A 240px serif section numeral as a watermark behind every section page.',
     composition_cycle: ['hero', 'editorial-split', 'data-focus', 'quote', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],
@@ -996,6 +1016,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — threshold cross: a 200px number sitting on the 2px threshold rule, its label at 14px above.',
       'Poster C — status rail: 14px labels stacked in a 1.5em column down the left edge, a 72px title on the right.',
     ],
+    motifs: ['hud-lines', 'tick-circle', 'dot-matrix'],
     signature: 'A 2px threshold rule that marks the one reading that moved.',
     composition_cycle: ['hero', 'data-focus', 'process', 'editorial-split', 'layered', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'inverse', 'accent'],
@@ -1068,6 +1089,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — single word: a 160px display word with 0.2em tracking and one 2px vermilion rule below it.',
       'Poster C — hanging indent: a 72px title across two lines with the second line indented 160px.',
     ],
+    motifs: ['square-grid', 'concentric-circles', 'barcode'],
     signature: 'A single vermilion element per deck: one rule, one numeral, or one word.',
     composition_cycle: ['hero', 'editorial-split', 'data-focus', 'layered', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'base', 'inverse'],
@@ -1131,6 +1153,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — ghost version: a 180px V2 in #4B3FA0 offset 24px behind the 72px title.',
       'Poster C — full-bleed statement: a 44px centred statement with a 96px numeral at the edge of the gradient.',
     ],
+    motifs: ['radial-rays', 'nested-polygons', 'polygon-mesh'],
     signature: 'A launch gradient with a 96px version numeral as the only ornament.',
     composition_cycle: ['hero', 'full-bleed', 'quote', 'layered', 'editorial-split', 'closing'],
     background_cycle: ['base', 'base', 'accent', 'inverse', 'base', 'base'],
@@ -1203,6 +1226,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — vertical steps: three 32px chips down the left margin, a 72px title on the right.',
       'Poster C — ghost chalk: a 160px word in the surface colour behind a 64px title.',
     ],
+    motifs: ['halftone-dots', 'common-shapes', 'dot-matrix'],
     signature: 'Numbered chips made from a single honey gradient, never rainbow colours.',
     composition_cycle: ['hero', 'process', 'process', 'editorial-split', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'base', 'inverse'],
@@ -1275,6 +1299,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — huge number: a 240px figure with the 44px ask below and the 16px deadline at the bottom.',
       'Poster C — type over block: a 72px title overlapping a 45%-width rose block, text above the block.',
     ],
+    motifs: ['radial-rays', 'concentric-circles', 'wave-texture'],
     signature: 'One proposition, one number, one deadline, stated in crimson.',
     composition_cycle: ['hero', 'quote', 'data-focus', 'editorial-split', 'asymmetric-split', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'base', 'inverse'],
@@ -1347,6 +1372,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — indented title: a two-line 72px title with a 96px indent and a 1px rule; band below.',
       'Poster C — ghost band: a 160px word in #D3E4F5 behind a 64px title, band along the bottom.',
     ],
+    motifs: ['square-grid', 'hud-lines', 'polygon-mesh'],
     signature: 'An 8px azure section band along the bottom edge of every section page.',
     composition_cycle: ['hero', 'editorial-split', 'layered', 'process', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'inverse', 'base'],
@@ -1419,6 +1445,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Poster B — vertical year: 2026 set one digit per line in a 1em column, the 72px title to its right.',
       'Poster C — ghost growth: bilingual ghost “ANNUAL / 年报” at 120px and 8% ink behind the 64px title.',
     ],
+    motifs: ['contour-lines', 'wave-texture', 'dot-matrix'],
     signature: 'A 240px year numeral watermark on the cover, set in the latin face at 4% ink.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'layered', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],

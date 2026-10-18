@@ -56,6 +56,9 @@ describe('theme library', () => {
       expect(theme.poster_moves.length).toBeGreaterThanOrEqual(2)
       expect(theme.poster_moves.every(move => move.length > 20 && move.length <= 180)).toBe(true)
       expect(new Set(theme.poster_moves).size).toBe(theme.poster_moves.length)
+      expect(theme.motifs.length).toBeGreaterThanOrEqual(1)
+      expect(theme.motifs.length).toBeLessThanOrEqual(4)
+      expect(new Set(theme.motifs).size).toBe(theme.motifs.length)
       // A themed layout must say how every poster role is built, not just the
       // four roles the old catalogue happened to mention.
       for (const composition of ['hero', 'editorial-split', 'asymmetric-split', 'process', 'layered', 'data-focus', 'quote', 'full-bleed', 'closing']) {

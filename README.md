@@ -42,7 +42,7 @@
 
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
-- 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
+- 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。另有 15 类生成式 SVG 纹样（同心圆、半调波点、HUD、刻度圆、条形码、波浪、点阵、多边形网格、等高线、经纬球、射线等）可按主题配色现取现用。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
 - 📈 **智能图表与精选配图**：自动搜索合规免版权商业配图，并根据数据自动绘制高品质图表，告别枯燥的大段纯文本。
 - 👁️ **AI 视觉闭环审稿**：AI 会把做好的 PPT 真正“渲染并审阅一遍”，自动发现并纠正文字溢出、重叠与排版瑕疵，确保出片品质。
 - ✨ **放映文字动画**：文字与图形可以按页配置入场动画——淡入、飞入、缩放、旋转、擦除等 29 种效果，支持按段落逐条构建、点击步编排与整页转场。
@@ -269,6 +269,7 @@ node --input-type=module -e "import('sharp').then(() => console.log('sharp ok'))
 - `decoration` / `avoid`：允许的装饰动作与会破坏主题的坏习惯，两者都写成可执行的 CSS 语言
 - `image_treatment`：摄影、截图与生成式素材的处理方式（双色调、裁切比例、叠加浓度），避免素材把版式带跑
 - `gradients`：每套主题 0–2 条线性渐变，带角度、色标、所属色组、页数上限与纯色降级说明；只有封面、章节页、引用页与结束页可以用，每套 deck 最多 2 页
+- `motifs`：这套主题可用的生成式装饰纹样（2–3 个 id + 放置建议）；再加 `motif_id` 调用会返回该纹样的自包含 SVG（base / inverse 两版）
 
 页面底色写在 `.ppt-slide` 元素上，纯色与主题渐变都会导出为 **PPTX 原生幻灯片底色**（不是截图层）；因此 HTML 预览、PowerPoint 里看到的底一致，渐变也仍然是可编辑的矢量填充。
 
@@ -279,8 +280,17 @@ ppt_themes()                                              # 列出全部主题�
 ppt_themes(scene="融资路演")                                # 按场景筛选
 ppt_themes(theme_id="carbon-blueprint")                    # 读取完整配方
 ppt_themes(theme_id="carbon-blueprint", page_types=[...])   # 取逐页视觉方案
+ppt_themes(theme_id="carbon-blueprint", motif_id="square-grid")  # 生成纹样 SVG
 ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 ```
+
+### 生成式装饰纹样
+
+装饰不再只有圆、线和长方形。`ppt_themes(theme_id, motif_id=...)` 按主题配色生成 15 类自包含 SVG，返回 `svg_base`（浅色组）与 `svg_inverse`（反色组）：
+
+同心圆 / concentric circles · 半调波点 / halftone dots · HUD 线条 / HUD lines · 刻度圆 / tick circle · 条形码 / barcode · 波浪纹理 / wave texture · 重复线条 / repeating lines · 点阵 / dot matrix · 多边形网格 / polygon mesh · 等高线 / contour lines · 常见图形 / common shapes · 嵌套多边形 / nested polygons · 经纬球 / wireframe globe · 方形网格 / square grid · 射线 / radial rays
+
+生成原理与参考纹样工具一致：**确定性几何 + 主题调色板 + 可缩放 SVG**，不是随机贴图。每个纹样只使用 `circle / line / rect / path / polygon`，不含 filter、mask、pattern、foreignObject、script 或外链，因此能通过 HTML 白名单、进入 PPTX 时仍是矢量图形。每页最多一个纹样，放在角落、边缘或背景层，不压正文；一套 deck 2–3 页即可。
 
 `ppt_outline` 带上 `theme_id` 后会做一致性校验，任何偏离都以告警列出，而不是静默通过：
 
@@ -306,6 +316,7 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 - 规则线（1px / 2px）与任何文字基线至少留 24px，永远不要穿过标题或副标题
 - 文字旋转只允许纯 `rotate`（±8°、原点居中、不能缩放/斜切/平移），只用在短标签或单词上，整套 deck ≤ 2 处；它会以原生旋转进入 PPTX，预览与产物一致
 - 允许 0.06–0.18 的低透明度中英文叠字作为背景层（真实文本、z-index 低于标题、每页最多一组），PPTX 中保留为可编辑文字
+- 生成式纹样每页最多一个，放在角落/边缘/背景层，不压正文；用 `ppt_themes(theme_id, motif_id=...)` 返回的 SVG，不要手写复杂 SVG，一套 deck 2–3 页即可
 - 投影（`box-shadow`）、`filter`、`clip-path`、`content` 一律禁止——立体感靠边框与色阶，这样 HTML 预览与 PPTX 产物才不会出现保真断层
 
 ## 放映动效与字体

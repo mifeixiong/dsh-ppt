@@ -4,6 +4,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from './index.ts'
 import { PptError } from './errors.ts'
 import { buildFontCatalog, discoverRegisteredFonts, installedFontsAsDiscovered, registeredFont } from './fonts.ts'
+import { findMotif, renderMotif } from './motifs.ts'
 import { installFontFile, listInstalledFonts, type InstalledFontFace } from './font-files.ts'
 import { createHtmlDeck } from './html.ts'
 import { describeImageSearchDegradation } from './image-search.ts'
@@ -507,6 +508,7 @@ const PPT_THEMES_OUTPUT = {
           body_font: { type: 'string', required: true },
           signature: { type: 'string', required: true },
           poster_move: { type: 'string', required: true },
+          motif: { type: 'string', required: true },
           gradient: { type: 'string', required: true },
         },
         additionalProperties: false,
@@ -559,6 +561,21 @@ const PPT_THEMES_OUTPUT = {
         },
         image_treatment: { type: 'string', required: true },
         avoid: { type: 'array', items: { type: 'string' }, required: true },
+        motifs: {
+          type: 'array', required: true,
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', required: true },
+              name: { type: 'string', required: true },
+              placement: { type: 'string', required: true },
+              description: { type: 'string', required: true },
+              width: { type: 'integer', required: true },
+              height: { type: 'integer', required: true },
+            },
+            additionalProperties: false,
+          },
+        },
         gradients: {
           type: 'array', required: true,
           items: {
@@ -631,12 +648,25 @@ const PPT_THEMES_OUTPUT = {
         additionalProperties: false,
       },
     },
+    motif: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', required: true },
+        name: { type: 'string', required: true },
+        placement: { type: 'string', required: true },
+        description: { type: 'string', required: true },
+        width: { type: 'integer', required: true },
+        height: { type: 'integer', required: true },
+        svg_base: { type: 'string', required: true },
+        svg_inverse: { type: 'string', required: true },
+      },
+      additionalProperties: false,
+    },
   },
   additionalProperties: false,
 } as const
 
-/** Resolve the concrete colours one page of this theme should use. */
-function themePageColors(theme: PptTheme, role: ArtBackground): { background: string; surface: string; text: string; accent: string; note: string } {
+/** Resolve the concrete colours one page of this theme should use. */function themePageColors(theme: PptTheme, role: ArtBackground): { background: string; surface: string; text: string; accent: string; note: string } {
   if (role === 'accent') {
     const first = contrastRatio(theme.palette.text[0]!, theme.palette.accent)
     const secondIndex = 1 % theme.palette.text.length
@@ -673,11 +703,13 @@ function pptThemesTool() {
       'List the built-in deck themes and read one in full before the Art Direction pass.',
       'Call it with no arguments to see every theme with its scene tags, then pass theme_id to get a vetted palette, type roles, decoration vocabulary and per-composition layout notes.',
       'Pass page_types as well to get the exact visual half of the art_direction plan for each page: composition, density, background role, title treatment, frame policy and the concrete colours that page should use.',
+      'Pass motif_id to render one of that theme generative decoration motifs into self-contained SVG for both tonal groups; embed it as an svg leaf, never behind body copy.',
       'A theme is a starting point, not a substitute: the concept, audience_effect, page job and page takeaway stay yours to write from the actual content.',
     ].join(' '),
     parameters: {
       scene: { type: 'string', description: 'Optional scene filter, matched case-insensitively against the theme scene tags, for example 融资路演 or 技术方案.' },
       theme_id: { type: 'string', description: 'Theme to read in full. Omit to list the catalogue.' },
+      motif_id: { type: 'string', description: 'Optional motif id from that theme; renders the motif SVG for the base and inverse groups. Requires theme_id.' },
       page_types: {
         type: 'array', items: { type: 'string', enum: SLIDE_TYPES },
         description: 'Optional ordered slide roles for this deck; returns the per-page visual plan for the chosen theme. Requires theme_id and at most 60 entries.',
@@ -698,6 +730,31 @@ function pptThemesTool() {
       const theme = validateTheme(findTheme(args.theme_id.trim(), PPT_THEMES))
       const findings = themeFindings(theme)
       const warnings = [...catalog.warnings, ...findings.map(finding => `${finding.code}: ${finding.message}`)]
+      if (args.motif_id !== undefined) {
+        if (args.page_types !== undefined) {
+          throw new PptError('PPT_THEME_INVALID', 'ppt_themes motif_id and page_types are separate requests')
+        }
+        const motifId = args.motif_id.trim()
+        if (!theme.motifs.includes(motifId)) {
+          throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} has no motif ${motifId}`, {
+            details: { available: [...theme.motifs] },
+          })
+        }
+        const definition = findMotif(motifId)!
+        const baseText = theme.palette.text[0]!
+        const inverseText = theme.palette.text[1 % theme.palette.text.length]!
+        return {
+          usage: catalog.usage,
+          warnings,
+          themes: PPT_THEMES.map(themeSummary),
+          motif: {
+            id: definition.id, name: definition.name, placement: definition.placement,
+            description: definition.description, width: definition.width, height: definition.height,
+            svg_base: renderMotif(motifId, { ink: baseText, accent: theme.palette.accent }),
+            svg_inverse: renderMotif(motifId, { ink: inverseText, accent: theme.palette.accent_inverted }),
+          },
+        }
+      }
       let pages: Array<{
         page: number
         type: typeof SLIDE_TYPES[number]
@@ -765,6 +822,14 @@ function pptThemesTool() {
           type_treatment: { ...theme.type_treatment },
           image_treatment: theme.image_treatment,
           avoid: [...theme.avoid],
+          motifs: theme.motifs.map((motifId) => {
+            const definition = findMotif(motifId)
+            if (definition === undefined) throw new PptError('PPT_THEME_INVALID', `unknown motif: ${motifId}`)
+            return {
+              id: definition.id, name: definition.name, placement: definition.placement,
+              description: definition.description, width: definition.width, height: definition.height,
+            }
+          }),
           gradients: theme.gradients.map(gradient => ({
             name: gradient.name,
             angle: gradient.angle,

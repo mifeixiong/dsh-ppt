@@ -116,6 +116,8 @@ export interface PptTheme {
     image_treatment: string;
     /** The theme's permitted gradients. Most themes carry none or one. */
     gradients: readonly ThemeGradient[];
+    /** Generative SVG motifs this theme may use; the catalogue renders them. */
+    motifs: readonly string[];
     /** What each composition means inside this theme. */
     layout_notes: Readonly<Partial<Record<ArtComposition, string>>>;
 }
@@ -156,6 +158,8 @@ export interface ThemeSummary {
     body_font: string;
     signature: string;
     poster_move: string;
+    /** Bilingual name of the theme's lead generative motif. */
+    motif: string;
     gradient: string;
 }
 export interface ThemeCatalog {

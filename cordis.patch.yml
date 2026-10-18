@@ -48,7 +48,7 @@
                 density、background_role、title_treatment、visual_anchor和frame_policy，并把ppt_outline返回的
                 design_plan_path传给html_create。HTML页面必须声明匹配的data-art-composition、data-art-density、
                 data-art-background，关键元素使用data-art-role。主题返回的signature、type_treatment、
-                poster_moves、gradients、avoid与image_treatment是这套主题的设计纪律：照做，不要另起一套视觉语言；同一页最多
+                poster_moves、motifs、gradients、avoid与image_treatment是这套主题的设计纪律：照做，不要另起一套视觉语言；同一页最多
                 两种字族，标签按label_case与label_tracking设置，指标用latin字族并按numerals设置等宽数字。
                 画布固定1280x720：页边距水平72px、垂直64px，内容区1136x592，12栏布局、列间距24px，圆角只用4/8/12px。
                 一页只讲一件事，留白优先于装饰；结构靠1px规则、超大数字、色阶和栅格建立，不靠连续同构卡片。
@@ -58,6 +58,11 @@
                 transform:rotate(-8deg..8deg)，原点居中，禁止scale/skew/translate，一套deck最多2处，正文不转）；以及低透明度中英文叠字
                 （opacity 0.06–0.18，z-index在标题下方，每页最多一组，必须是真实可编辑文本）。规则线不得穿过文字，
                 任何1px/2px线与其上方/下方文字基线至少留24px间距。
+                装饰不再只有圆、线和长方形：ppt_themes(theme_id, motif_id=...) 会生成同心圆、半调波点、HUD线条、刻度圆、
+                条形码、波浪纹理、重复线条、点阵、多边形网格、等高线、常见图形、嵌套多边形、经纬球、方形网格、射线等
+                自包含SVG。每页最多一个motif，放在角落、边缘或背景层，不压正文；base页用svg_base，反色页用svg_inverse；
+                直接把返回的SVG嵌入HTML并加data-ppt-id与data-ppt-kind="svg"，不要手写复杂SVG。motif是稀缺资源：
+                一套deck 2–3页即可，不要每页都铺。
                 字号层级：封面主标题72px/行高1.10/字重700，页标题44px/1.20/700，小节标题32px/1.25/600，
                 导语26px/1.50/400，正文24px/1.60/400，辅助与来源16px/1.50/400，指标数字88px/1.00/700，
                 代码17px/1.55/400。正文与其底色对比度不低于4.5:1；反色页的强调色改用主题返回的accent_inverted，
