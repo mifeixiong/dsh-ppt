@@ -506,6 +506,7 @@ const PPT_THEMES_OUTPUT = {
           display_font: { type: 'string', required: true },
           body_font: { type: 'string', required: true },
           signature: { type: 'string', required: true },
+          poster_move: { type: 'string', required: true },
           gradient: { type: 'string', required: true },
         },
         additionalProperties: false,
@@ -543,6 +544,7 @@ const PPT_THEMES_OUTPUT = {
         },
         accent_usage: { type: 'string', required: true },
         signature: { type: 'string', required: true },
+        poster_moves: { type: 'array', items: { type: 'string' }, required: true },
         type_treatment: {
           type: 'object', required: true,
           properties: {
@@ -614,6 +616,7 @@ const PPT_THEMES_OUTPUT = {
             additionalProperties: false,
           },
           note: { type: 'string', required: true },
+          poster_move: { type: 'string' },
           gradient: {
             type: 'object',
             properties: {
@@ -705,6 +708,7 @@ function pptThemesTool() {
         frame_policy: string
         colors: { background: string; surface: string; text: string; accent: string }
         note: string
+        poster_move?: string
         gradient?: { name: string; css: string; fallback: string; note: string }
       }> | undefined
       if (args.page_types !== undefined) {
@@ -725,8 +729,9 @@ function pptThemesTool() {
             colors: {
               background: colors.background, surface: colors.surface, text: colors.text, accent: colors.accent,
             },
-            note: `${compositionNote} ${colors.note}${entry.gradient === undefined ? '' : ` Gradient allowed on this page: ${entry.gradient.css} (fallback ${entry.gradient.fallback}). ${entry.gradient.note}`}`,
+            note: `${compositionNote} ${colors.note}${entry.gradient === undefined ? '' : ` Gradient allowed on this page: ${entry.gradient.css} (fallback ${entry.gradient.fallback}). ${entry.gradient.note}`}${entry.poster_move === undefined ? '' : ` Poster move: ${entry.poster_move}`}`,
             ...(entry.gradient === undefined ? {} : { gradient: { ...entry.gradient } }),
+            ...(entry.poster_move === undefined ? {} : { poster_move: entry.poster_move }),
           }
         })
       }
@@ -756,6 +761,7 @@ function pptThemesTool() {
           },
           accent_usage: `Use ${theme.palette.accent} as art_direction.palette.accent. On pages whose background_role is inverse or accent, put ${theme.palette.accent_inverted} in the HTML where the accent colour would otherwise go; the plan schema carries one accent, so this swap lives in the markup.`,
           signature: theme.signature,
+          poster_moves: [...theme.poster_moves],
           type_treatment: { ...theme.type_treatment },
           image_treatment: theme.image_treatment,
           avoid: [...theme.avoid],

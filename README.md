@@ -265,6 +265,7 @@ node --input-type=module -e "import('sharp').then(() => console.log('sharp ok'))
 
 - `type_treatment`：标题/标签/正文的字距、标签大小写、数字是否等宽、正文每行字数——排印层级的可执行规则
 - `signature`：这套主题的签名手法（例如「徽章式 240px 年份水印」「一条 2px 阈值线」），整套 deck 只重复这一件事
+- `poster_moves`：封面/章节/引用/结束页的 3 条大胆排印方案（超大字、竖排单字、同词幽灵重影、字压色块、巨型数字、错位缩进），逐页方案会指定该页用哪一条，相邻海报页不重复
 - `decoration` / `avoid`：允许的装饰动作与会破坏主题的坏习惯，两者都写成可执行的 CSS 语言
 - `image_treatment`：摄影、截图与生成式素材的处理方式（双色调、裁切比例、叠加浓度），避免素材把版式带跑
 - `gradients`：每套主题 0–2 条线性渐变，带角度、色标、所属色组、页数上限与纯色降级说明；只有封面、章节页、引用页与结束页可以用，每套 deck 最多 2 页
@@ -298,9 +299,11 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 - 画布 1280×720，页边距水平 72px / 垂直 64px，内容区 1136×592，12 栏、列间距 24px，圆角只用 4 / 8 / 12px
 - 字号层级：封面主标题 72px、页标题 44px、小节标题 32px、导语 26px、正文 24px、辅助 16px、指标数字 88px、代码 17px
 - 排印：标题按 `type_treatment.display_tracking` 收紧字距，标签全大写并拉开到 `label_tracking`，正文受 `measure` 约束；同一页最多两种字族
+- 海报页：封面、章节、引用、结束页必须执行 `ppt_themes` 返回的 `poster_move`，一套 deck 至少两种不同 move；正文页保持安静，不要把每页都做成「标题+方块」
 - 装饰是封闭集合：1px / 2px 边框、圆角、色阶差、opacity、z-index、字号对比、栅格对齐、纯色或主题返回的 `linear-gradient` 背景
 - 渐变是稀缺资源：只允许用 `ppt_themes` 为当前页返回的那一条，只出现在封面/章节/引用/结束页，每套 deck 最多 2 页，并且必须同时写与首个色标一致的 `background-color` 降级
 - 页面底色写在 `.ppt-slide` 上，纯色与原生线性渐变都会进入 PPTX；不要用铺满整页的 `shape` 伪装底色
+- 规则线（1px / 2px）与任何文字基线至少留 24px，永远不要穿过标题或副标题
 - 投影（`box-shadow`）、`transform`、`filter`、`clip-path`、`content` 一律禁止——立体感只能靠边框与色阶，这样 HTML 预览与 PPTX 产物才不会出现保真断层
 
 ## 放映动效与字体

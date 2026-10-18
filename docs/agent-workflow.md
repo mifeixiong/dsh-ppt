@@ -27,7 +27,7 @@
 | `browser_scroll_down` / `browser_scroll_up` | 在只读研究页里滚动 |
 | `image_search` | 免费匿名的 Openverse 检索，自动回退 Wikimedia Commons；不需要 API key |
 | `ppt_fonts` | 只读查询**插件批准注册表内当前可用**的字体（不是本机全量字体清单） |
-| `ppt_themes` | 只读查询内置主题库：目录、单套完整配方（配色、排印规则、签名手法、禁用习惯、素材处理、渐变）、以及按页型展开的逐页视觉方案（构图、疏密、底色角色、标题处理、帧策略、具体色值与可选渐变） |
+| `ppt_themes` | 只读查询内置主题库：目录、单套完整配方（配色、排印规则、签名手法、海报排印方案、禁用习惯、素材处理、渐变）、以及按页型展开的逐页视觉方案（构图、疏密、底色角色、标题处理、帧策略、具体色值、可选渐变与 poster_move） |
 | `ppt_outline` | 校验大纲与 Art Direction，原子生成 `outline.json` 与 `design-plan.json`；给了 `theme_id` 时同时校验主题一致性 |
 | `html_create` | 校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
 | `ppt_create` | 把 HTML 设计稿转成可编辑 PPTX；也负责 `finalize_visual_review=true` |
@@ -114,7 +114,7 @@ ppt-output/_staging/<topic>/
 
 `job`、`takeaway`、`composition`、`density`、`background_role`、`title_treatment`、`visual_anchor`、`frame_policy`。
 
-先用 `ppt_themes` 定主题再排页，比从零设计省事得多：传 `theme_id` 与 `page_types` 会直接返回逐页的 `composition` / `density` / `background_role` / `title_treatment` / `frame_policy`、该页应使用的具体色值（含反色页要换用的 `accent_inverted`），以及主题允许时的那一条渐变（`gradient.css` + `fallback` + 页数限制）。主题仍是起点：`concept`、`audience_effect` 与每页 `job`、`takeaway` 必须按实际内容自己写；`signature`、`type_treatment`、`avoid`、`image_treatment` 是这套主题的设计纪律，照做。页面底色写在 `.ppt-slide` 上（纯色或主题渐变），会导出为 PPTX 原生底色，不要用铺满整页的 shape 伪装。需要品牌色时，用 `browser_visit` 读公开品牌规范取色，并按同一纪律自建（正文与强调色对每一层底色与渐变 stop 都 ≥4.5:1，深色页准备独立的反色强调色）。
+先用 `ppt_themes` 定主题再排页，比从零设计省事得多：传 `theme_id` 与 `page_types` 会直接返回逐页的 `composition` / `density` / `background_role` / `title_treatment` / `frame_policy`、该页应使用的具体色值（含反色页要换用的 `accent_inverted`）、主题允许时的那一条渐变（`gradient.css` + `fallback` + 页数限制），以及海报页的 `poster_move`。主题仍是起点：`concept`、`audience_effect` 与每页 `job`、`takeaway` 必须按实际内容自己写；`signature`、`poster_moves`、`type_treatment`、`avoid`、`image_treatment` 是这套主题的设计纪律，照做。海报页至少用两种不同 move，正文页保持安静，规则线与文字基线保持 24px 以上间距。页面底色写在 `.ppt-slide` 上（纯色或主题渐变），会导出为 PPTX 原生底色，不要用铺满整页的 shape 伪装。需要品牌色时，用 `browser_visit` 读公开品牌规范取色，并按同一纪律自建（正文与强调色对每一层底色与渐变 stop 都 ≥4.5:1，深色页准备独立的反色强调色）。
 
 另外三条会直接触发校验失败或告警的硬约束，框架 agent 交稿前自查：
 

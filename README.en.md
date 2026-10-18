@@ -265,6 +265,7 @@ Colours are not improvised: every palette traces to a published design system or
 
 - `type_treatment` — tracking for display/label/body, label case, figure style and body measure, so the type hierarchy is executable
 - `signature` — the one device this theme repeats across the deck (a 240px year watermark, a 2px threshold rule)
+- `poster_moves` — three bold display-type moves for cover, section, quote and ending pages (oversized type, vertical single-character column, ghost duplicate, type over a tonal block, giant numeral, hanging indent); the per-page plan names the one that page uses and adjacent posters never repeat
 - `decoration` / `avoid` — permitted moves and the habits that would break the theme, both written as CSS-level instructions
 - `image_treatment` — how photography, screenshots and generated assets are cropped, toned and scrimmed so assets cannot derail the layout
 - `gradients` — zero to two linear gradients per theme, with angle, stops, tonal group, page cap and solid fallback; only cover, section, quote and ending pages may use one, at most two pages per deck
@@ -292,9 +293,11 @@ To follow a client brand instead, read its public style guide with `browser_visi
 - Canvas 1280×720, margins 72px horizontal / 64px vertical, content area 1136×592, 12 columns with 24px gutters, radii limited to 4 / 8 / 12px
 - Type scale: cover title 72px, page title 44px, section title 32px, lead 26px, body 24px, caption 16px, metric 88px, code 17px
 - Typography: tighten display tracking per `type_treatment.display_tracking`, set labels in the declared case at `label_tracking`, keep body copy inside `measure`, and never use more than two families on one page
+- Poster pages: cover, section, quote and ending must execute the `poster_move` that `ppt_themes` returns for that page; a deck uses at least two different moves, and body pages stay quiet instead of repeating a title-plus-box block
 - Ornament is a closed set: 1px and 2px borders, radii, tonal steps, opacity, z-index, type contrast, grid alignment, and solid or theme-provided `linear-gradient` backgrounds
 - Gradients are scarce: use only the one `ppt_themes` returns for that page, only on cover, section, quote or ending pages, at most two pages per deck, and always with a solid `background-color` fallback equal to the first stop
 - The page ground lives on `.ppt-slide`; solid colours and native linear gradients both enter the PPTX. Never fake a ground with a full-bleed `shape`
+- Rules (1px / 2px) keep 24px clear of any text baseline and never run through a title or subtitle
 - `box-shadow`, `transform`, `filter`, `clip-path` and `content` are rejected outright, so depth comes from borders and tonal steps and the HTML preview cannot diverge from the PPTX
 
 ## Motion and fonts

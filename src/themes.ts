@@ -99,6 +99,12 @@ export interface PptTheme {
   }
   /** How the four font roles are set, not just which families they use. */
   type_treatment: ThemeTypeTreatment
+  /**
+   * Bold display-type moves for poster pages. Poster pages are where a deck is
+   * allowed to be typographic rather than tidy; the plan walks this list so a
+   * deck does not put the same square title block on every page.
+   */
+  poster_moves: readonly string[]
   /** One-line signature device, repeated across the deck as its identity. */
   signature: string
   /** Composition preference, repeated across the deck in page order. */
@@ -125,7 +131,7 @@ export interface PptTheme {
 const HEX = /^#[0-9A-F]{6}$/u
 const GRADIENT_GROUP = ['base', 'inverse', 'accent'] as const
 /** Poster compositions are the only pages allowed to carry a gradient field. */
-const GRADIENT_COMPOSITIONS: readonly ArtComposition[] = ['hero', 'full-bleed', 'closing', 'quote']
+const POSTER_COMPOSITIONS: readonly ArtComposition[] = ['hero', 'full-bleed', 'closing', 'quote']
 
 /** WCAG 2.1 relative luminance of an #RRGGBB colour. */
 export function relativeLuminance(color: string): number {
@@ -265,6 +271,10 @@ export function validateTheme(theme: PptTheme): PptTheme {
   }
   requireText(theme.id, 'signature', theme.signature, 140)
   requireText(theme.id, 'image_treatment', theme.image_treatment, 240)
+  if (theme.poster_moves.length < 2 || theme.poster_moves.length > 5) {
+    throw new PptError('PPT_THEME_INVALID', `theme ${theme.id} needs 2..5 poster moves`)
+  }
+  for (const [index, move] of theme.poster_moves.entries()) requireText(theme.id, `poster_moves[${index}]`, move, 180)
   for (const role of ['display_tracking', 'label_tracking', 'body_tracking', 'measure'] as const) {
     requireText(theme.id, `type_treatment.${role}`, theme.type_treatment[role], 80)
   }
@@ -334,6 +344,7 @@ export interface ThemeSummary {
   display_font: string
   body_font: string
   signature: string
+  poster_move: string
   gradient: string
 }
 
@@ -347,7 +358,8 @@ const USAGE = [
   'ppt_themes returns reusable design recipes. Call it with no arguments to choose one, then pass the chosen theme_id to ppt_outline.',
   'A theme is a starting point for the Art Direction pass, not a substitute for it: keep concept and audience_effect specific to this deck, and write each page job and takeaway from the actual content.',
   'Call ppt_themes with theme_id and page_types to get the visual half of the plan for every page: composition, density, background role, title treatment, frame policy, the exact colours that page should use, and the one page-local gradient when the theme permits it.',
-  'layout_notes, decoration, avoid, type_treatment and signature say how each composition is built, which ornament this theme permits and which habits would break it, so the HTML follows the recipe instead of inventing one.',
+  'layout_notes, poster_moves, decoration, avoid, type_treatment and signature say how each composition is built, which bold display move a poster page may use, which ornament this theme permits and which habits would break it, so the HTML follows the recipe instead of inventing one.',
+  'When a page carries a poster_move, that move governs the display layer and wins over the layout note; the layout note still describes the content structure beneath it.',
   'Every palette traces to a published design system or a public palette source, named in palette_source. When the deck must follow a client brand instead, read the brand palette from its public style guide with browser_visit, then build the plan on those values and keep the same contrast discipline: body text and accent at 4.5:1 or better against every background, surface and gradient stop, and a separate accent for the inverted tonal group.',
 ].join(' ')
 
@@ -363,6 +375,7 @@ export function themeSummary(theme: PptTheme): ThemeSummary {
     display_font: theme.typography.display.family,
     body_font: theme.typography.body.family,
     signature: theme.signature,
+    poster_move: theme.poster_moves[0]!,
     gradient: theme.gradients[0]?.name ?? '',
   }
 }
@@ -405,6 +418,8 @@ export interface ThemePagePlan {
   title_treatment: ArtTitleTreatment
   frame_policy: ArtFramePolicy
   gradient?: ThemePageGradient
+  /** One bold display-type move for this poster page, walked from the theme. */
+  poster_move?: string
 }
 
 function backgroundGroup(role: ArtBackground): ThemeGradient['group'] {
@@ -424,7 +439,7 @@ function gradientFor(
   composition: ArtComposition,
   budget: Map<ThemeGradient, number>,
 ): ThemePageGradient | undefined {
-  if (!GRADIENT_COMPOSITIONS.includes(composition)) return undefined
+  if (!POSTER_COMPOSITIONS.includes(composition)) return undefined
   const group = backgroundGroup(background)
   for (const gradient of theme.gradients) {
     if (gradient.group !== group) continue
@@ -449,10 +464,17 @@ export function planThemePages(
   let groupedBudget = theme.rhythm_limits.max_grouped_frame_slides
   const gradientBudget = new Map<ThemeGradient, number>(theme.gradients.map(gradient => [gradient, gradient.max_pages]))
   let previous: ArtComposition | undefined
+  let posterIndex = 0
   return types.map((type, index) => {
     const composition = compositionFor(theme, type, index, previous)
     previous = composition
     const background = theme.background_cycle[index % theme.background_cycle.length]!
+    // Poster pages are where the deck is allowed to be typographic. Walking the
+    // theme's own move list in page order gives each one a different display
+    // treatment, and a theme with three moves never repeats on adjacent posters.
+    const poster_move = POSTER_COMPOSITIONS.includes(composition)
+      ? theme.poster_moves[posterIndex++ % theme.poster_moves.length]!
+      : undefined
     // `grouped` means at least two frame elements on the page, and the theme
     // budgets how many pages the deck may spend that way. Spending the budget
     // here keeps artDirectionFindings clean instead of reporting an overrun.
@@ -469,6 +491,7 @@ export function planThemePages(
       title_treatment: covers.has(type) ? 'statement' as const : 'label' as const,
       frame_policy,
       ...(gradient === undefined ? {} : { gradient }),
+      ...(poster_move === undefined ? {} : { poster_move }),
     }
   })
 }
@@ -635,6 +658,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '34-42 CJK characters per line, left-aligned, never justified',
     },
+    poster_moves: [
+      'Poster A — split headline: 72px two-line title with the second line indented 96px, plus a 200px index numeral at 6% ink in the outer margin.',
+      'Poster B — vertical margin: one keyword set one character per line in a 1em-wide box against the 1px margin rule.',
+      'Poster C — metric poster: a 240px number in the latin face with a 32px caption; the title drops to 44px.',
+    ],
     signature: 'A 1px blueprint margin that only appears in the outer 72px of the page.',
     composition_cycle: ['hero', 'editorial-split', 'process', 'data-focus', 'asymmetric-split', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'base', 'accent'],
@@ -693,12 +721,17 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '30-38 CJK characters per line; table cells wrap only at punctuation',
     },
+    poster_moves: [
+      'Poster A — ledger cover: 72px title left, the quarter number at 160px right, and the 2px brass rule at least 32px below the lowest text, never across it.',
+      'Poster B — stacked figures: three 96px numbers in a vertical column, each with a 16px label; the title at 44px.',
+      'Poster C — ghost verdict: the one-word verdict at 180px in brass at 12% behind a 72px title, offset 24px.',
+    ],
     signature: 'A brass rule under the deck title and nowhere else.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'process', 'layered', 'closing'],
     background_cycle: ['base', 'base', 'base', 'inverse', 'base', 'base'],
     rhythm_limits: { max_grouped_frame_slides: 2, max_same_composition_run: 1 },
     decoration: [
-      'Ledger rule: 1px #C9B48A under section titles, and the 2px brass rule under the deck title only.',
+      'Ledger rule: 1px #C9B48A under section titles, and the 2px brass rule under the deck title only. Every rule keeps 32px clear of a text line.',
       'Table: header weight 600 at 16px, 1px #DCE2EA row rules, no vertical lines, figures right-aligned and tabular.',
       'Metrics: one 88px figure in the latin face; a 16px tracked label above it and a 16px note below.',
       'Cards: surface fill, 1px #DCE2EA border, 4px radius; a card carries numbers, never prose.',
@@ -712,7 +745,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     image_treatment: 'Only evidence-like imagery (product shots, screenshots, charts). Crop to a 4:3 frame with a 1px border and a 16px caption; do not use atmosphere or stock photography.',
     gradients: [],
     layout_notes: {
-      hero: 'Title at 72px left; the single number of the quarter sits right at 88px, connected by one brass rule.',
+      hero: 'Title at 72px left; the quarter number at 160px right. The 2px brass rule sits at least 32px below the lowest text and never crosses the subtitle.',
       'editorial-split': 'Claim left at 44px, the quarter-over-quarter numbers right as a 3-row table; no card around the table.',
       'asymmetric-split': '4fr/8fr; the narrow column holds labels, the wide column holds evidence, and every row shares a baseline.',
       process: 'Three or four steps as a horizontal ledger: number, action, owner, date, one row per step, no cards.',
@@ -751,6 +784,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '28-36 CJK characters per line; one idea per paragraph',
     },
+    poster_moves: [
+      'Poster A — aurora word: one 200px word over the gradient, with the 72px ask below and no other ornament.',
+      'Poster B — valuation poster: a 240px figure on the right, a 44px title on the left, one hairline between.',
+      'Poster C — ghost conviction: the same word at 160px in #16375F offset 20px behind the 72px title.',
+    ],
     signature: 'A single aurora gradient field on the cover and closing only.',
     composition_cycle: ['hero', 'quote', 'full-bleed', 'editorial-split', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'accent', 'inverse', 'base', 'base'],
@@ -818,6 +856,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '28-36 CJK characters per line at 24px/1.65; never wider than 34em',
     },
+    poster_moves: [
+      'Poster A — vertical Song: the title set one character per line down the left margin at 96px, the crimson bar beside it.',
+      'Poster B — opening quote: a 320px serif quotation mark at 10% ink behind a 64px title.',
+      'Poster C — paper block: a 72px title overlapping a 40%-width surface block, with the block lower half visible.',
+    ],
     signature: 'A warm paper gradient that reads as uncoated stock, never as a tech gradient.',
     composition_cycle: ['hero', 'editorial-split', 'quote', 'process', 'full-bleed', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],
@@ -885,6 +928,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '30-38 CJK characters per line at 24px/1.7; a marginal note may run at 16px',
     },
+    poster_moves: [
+      'Poster A — journal poster: a 240px section numeral at 6% ink, a 72px serif title with a 96px hanging indent.',
+      'Poster B — micro/macro: a 16px tracked abstract in a 300px column on the left, a 160px serif keyword on the right.',
+      'Poster C — rule and numeral: a 96px section number above a 2px rule, the title below the rule.',
+    ],
     signature: 'A 240px serif section numeral as a watermark behind every section page.',
     composition_cycle: ['hero', 'editorial-split', 'data-focus', 'quote', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],
@@ -943,6 +991,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '30-40 CJK characters per line; labels stay one line',
     },
+    poster_moves: [
+      'Poster A — instrument poster: a 240px metric centred, a 32px label above, a 44px title on the left.',
+      'Poster B — threshold cross: a 200px number sitting on the 2px threshold rule, its label at 14px above.',
+      'Poster C — status rail: 14px labels stacked in a 1.5em column down the left edge, a 72px title on the right.',
+    ],
     signature: 'A 2px threshold rule that marks the one reading that moved.',
     composition_cycle: ['hero', 'data-focus', 'process', 'editorial-split', 'layered', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'inverse', 'accent'],
@@ -1010,6 +1063,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '36-44 CJK characters per line; the page should read as one column',
     },
+    poster_moves: [
+      'Poster A — graphite numeral: a 280px numeral at 6% ink behind a 72px title, offset 24px.',
+      'Poster B — single word: a 160px display word with 0.2em tracking and one 2px vermilion rule below it.',
+      'Poster C — hanging indent: a 72px title across two lines with the second line indented 160px.',
+    ],
     signature: 'A single vermilion element per deck: one rule, one numeral, or one word.',
     composition_cycle: ['hero', 'editorial-split', 'data-focus', 'layered', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'base', 'inverse'],
@@ -1068,6 +1126,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '26-34 CJK characters per line; launch copy is short by design',
     },
+    poster_moves: [
+      'Poster A — launch poster: a 200px version word or numeral with the 72px title below and a tonal block behind the lower half.',
+      'Poster B — ghost version: a 180px V2 in #4B3FA0 offset 24px behind the 72px title.',
+      'Poster C — full-bleed statement: a 44px centred statement with a 96px numeral at the edge of the gradient.',
+    ],
     signature: 'A launch gradient with a 96px version numeral as the only ornament.',
     composition_cycle: ['hero', 'full-bleed', 'quote', 'layered', 'editorial-split', 'closing'],
     background_cycle: ['base', 'base', 'accent', 'inverse', 'base', 'base'],
@@ -1135,6 +1198,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '32-40 CJK characters per line at 24px/1.65; steps stay under three lines',
     },
+    poster_moves: [
+      'Poster A — workshop poster: a 200px session number with a 32px step chip, the title at 44px.',
+      'Poster B — vertical steps: three 32px chips down the left margin, a 72px title on the right.',
+      'Poster C — ghost chalk: a 160px word in the surface colour behind a 64px title.',
+    ],
     signature: 'Numbered chips made from a single honey gradient, never rainbow colours.',
     composition_cycle: ['hero', 'process', 'process', 'editorial-split', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'base', 'inverse'],
@@ -1202,6 +1270,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '28-36 CJK characters per line; one proposition per page',
     },
+    poster_moves: [
+      'Poster A — one word: the proposition at 200px with the 6px crimson bar, and no body copy on the page.',
+      'Poster B — huge number: a 240px figure with the 44px ask below and the 16px deadline at the bottom.',
+      'Poster C — type over block: a 72px title overlapping a 45%-width rose block, text above the block.',
+    ],
     signature: 'One proposition, one number, one deadline, stated in crimson.',
     composition_cycle: ['hero', 'quote', 'data-focus', 'editorial-split', 'asymmetric-split', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'base', 'inverse'],
@@ -1269,6 +1342,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '32-40 CJK characters per line; headings at weight 600 rather than 700',
     },
+    poster_moves: [
+      'Poster A — azure poster: 72px title, a 240px scope number, and the 8px band along the bottom.',
+      'Poster B — indented title: a two-line 72px title with a 96px indent and a 1px rule; band below.',
+      'Poster C — ghost band: a 160px word in #D3E4F5 behind a 64px title, band along the bottom.',
+    ],
     signature: 'An 8px azure section band along the bottom edge of every section page.',
     composition_cycle: ['hero', 'editorial-split', 'layered', 'process', 'data-focus', 'closing'],
     background_cycle: ['base', 'base', 'inverse', 'base', 'inverse', 'base'],
@@ -1336,6 +1414,11 @@ export const PPT_THEMES: readonly PptTheme[] = [
       numerals: 'tabular',
       measure: '32-40 CJK characters per line; charts carry an explicit unit and year',
     },
+    poster_moves: [
+      'Poster A — annual poster: a 240px year numeral at 5% ink, a 72px title offset 48px.',
+      'Poster B — vertical year: 2026 set one digit per line in a 1em column, the 72px title to its right.',
+      'Poster C — ghost growth: a 160px word in #D3DDC5 behind the 64px title.',
+    ],
     signature: 'A 240px year numeral watermark on the cover, set in the latin face at 4% ink.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'layered', 'process', 'closing'],
     background_cycle: ['base', 'base', 'base', 'base', 'inverse', 'base'],

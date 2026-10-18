@@ -53,6 +53,9 @@ describe('theme library', () => {
       expect(theme.type_treatment.measure.length).toBeGreaterThan(10)
       expect(['sentence', 'upper']).toContain(theme.type_treatment.label_case)
       expect(['tabular', 'proportional']).toContain(theme.type_treatment.numerals)
+      expect(theme.poster_moves.length).toBeGreaterThanOrEqual(2)
+      expect(theme.poster_moves.every(move => move.length > 20 && move.length <= 180)).toBe(true)
+      expect(new Set(theme.poster_moves).size).toBe(theme.poster_moves.length)
       // A themed layout must say how every poster role is built, not just the
       // four roles the old catalogue happened to mention.
       for (const composition of ['hero', 'editorial-split', 'asymmetric-split', 'process', 'layered', 'data-focus', 'quote', 'full-bleed', 'closing']) {
@@ -77,6 +80,24 @@ describe('theme library', () => {
           expect(['hero', 'full-bleed', 'closing', 'quote']).toContain(entry.composition)
           expect(entry.gradient?.fallback).toBe(gradient.stops[0])
         }
+      }
+    }
+  })
+
+  it('walks bold poster moves only on poster pages and never repeats them back to back', () => {
+    for (const theme of PPT_THEMES) {
+      const plan = planThemePages(theme, [...SLIDE_TYPES])
+      const posters = plan.filter(entry => entry.poster_move !== undefined)
+      expect(posters.length).toBeGreaterThan(0)
+      for (const entry of posters) {
+        expect(['hero', 'full-bleed', 'closing', 'quote']).toContain(entry.composition)
+        expect(theme.poster_moves).toContain(entry.poster_move)
+      }
+      for (let index = 1; index < posters.length; index += 1) {
+        expect(posters[index]!.poster_move).not.toBe(posters[index - 1]!.poster_move)
+      }
+      for (const entry of plan.filter(candidate => candidate.poster_move === undefined)) {
+        expect(['hero', 'full-bleed', 'closing', 'quote']).not.toContain(entry.composition)
       }
     }
   })

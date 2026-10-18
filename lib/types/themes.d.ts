@@ -91,6 +91,12 @@ export interface PptTheme {
     };
     /** How the four font roles are set, not just which families they use. */
     type_treatment: ThemeTypeTreatment;
+    /**
+     * Bold display-type moves for poster pages. Poster pages are where a deck is
+     * allowed to be typographic rather than tidy; the plan walks this list so a
+     * deck does not put the same square title block on every page.
+     */
+    poster_moves: readonly string[];
     /** One-line signature device, repeated across the deck as its identity. */
     signature: string;
     /** Composition preference, repeated across the deck in page order. */
@@ -149,6 +155,7 @@ export interface ThemeSummary {
     display_font: string;
     body_font: string;
     signature: string;
+    poster_move: string;
     gradient: string;
 }
 export interface ThemeCatalog {
@@ -175,6 +182,8 @@ export interface ThemePagePlan {
     title_treatment: ArtTitleTreatment;
     frame_policy: ArtFramePolicy;
     gradient?: ThemePageGradient;
+    /** One bold display-type move for this poster page, walked from the theme. */
+    poster_move?: string;
 }
 /**
  * Expand the theme's cycles into one visual plan per page. The caller keeps the

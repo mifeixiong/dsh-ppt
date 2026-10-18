@@ -199,17 +199,18 @@ describe('PPT preset contract', () => {
     applyTools(fixture.context as never)
     const themes = fixture.getDefinitions().get('ppt_themes') as unknown as {
       execute: (args: Record<string, unknown>, exec: unknown) => Promise<{
-        themes: Array<{ id: string; palette_source: string; signature: string; gradient: string }>
+        themes: Array<{ id: string; palette_source: string; signature: string; poster_move: string; gradient: string }>
         theme?: {
           id: string
           palette: { accent: string; accent_inverted: string }
           decoration: string[]
           signature: string
+          poster_moves: string[]
           avoid: string[]
           type_treatment: { label_tracking: string }
           gradients: Array<{ name: string; css: string; fallback: string }>
         }
-        pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string }; gradient?: { css: string } }>
+        pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string }; poster_move?: string; gradient?: { css: string } }>
       }>
     }
 
@@ -218,6 +219,7 @@ describe('PPT preset contract', () => {
     expect(catalog.theme).toBeUndefined()
     expect(catalog.themes.every(theme => theme.palette_source.length > 0)).toBe(true)
     expect(catalog.themes.every(theme => theme.signature.length > 0)).toBe(true)
+    expect(catalog.themes.every(theme => theme.poster_move.length > 0)).toBe(true)
 
     const detail = await themes.execute({ theme_id: 'carbon-blueprint' }, {})
     expect(detail.theme?.palette.accent).toBe('#0B57D0')
@@ -225,6 +227,7 @@ describe('PPT preset contract', () => {
     expect(detail.theme?.decoration.length).toBeGreaterThan(0)
     expect(detail.theme?.avoid.length).toBeGreaterThan(0)
     expect(detail.theme?.type_treatment.label_tracking).toBe('0.16em')
+    expect(detail.theme?.poster_moves).toHaveLength(3)
     expect(detail.theme?.gradients).toEqual([])
 
     const planned = await themes.execute({ theme_id: 'midnight-raise', page_types: ['cover', 'content', 'data', 'ending'] }, {})
@@ -237,6 +240,10 @@ describe('PPT preset contract', () => {
     // page does not.
     expect(planned.pages?.[0]?.gradient?.css).toBe('linear-gradient(160deg, #07111F, #10294D, #0B3A6B)')
     expect(planned.pages?.[2]?.gradient).toBeUndefined()
+    // Poster moves belong to the cover and the ending, not the content or data page.
+    expect(planned.pages?.[0]?.poster_move).toContain('Poster A')
+    expect(planned.pages?.[1]?.poster_move).toBeUndefined()
+    expect(planned.pages?.[3]?.poster_move).toContain('Poster B')
 
     await expect(themes.execute({ theme_id: 'no-such-theme' }, {})).rejects.toMatchObject({ code: 'PPT_THEME_UNKNOWN' })
     await expect(themes.execute({ page_types: ['cover'] }, {})).rejects.toMatchObject({ code: 'PPT_THEME_INVALID' })
