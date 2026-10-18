@@ -55,6 +55,15 @@ describe('constrained HTML contract', () => {
     }
   })
 
+  it('reads an inline style that ends with font-family without a trailing semicolon', async () => {
+    const workspace = await createTestWorkspace()
+    try {
+      const source = html(`<section class="ppt-slide" data-page="1"><h1 data-ppt-id="t" data-ppt-kind="text" style="position:absolute;left:0;top:0;width:400px;height:80px;font-size:32px;font-family:'Liter'">T</h1></section>`)
+      const result = await validateDeckHtmlSource(workspace.root, workspace.root, source, 1)
+      expect(result.fonts).toContain('Liter')
+    } finally { await workspace.cleanup() }
+  })
+
   it('rejects scripts, remote resources, missing assets, unauthorized fonts, and unsupported CSS', async () => {
     for (const source of [
       html('<section class="ppt-slide" data-page="1"><h1 data-ppt-id="t" data-ppt-kind="text">T</h1><script>alert(1)</script></section>'),

@@ -42,7 +42,7 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 - 📝 **Truly Native & Editable**: Generates standard `.pptx` files rather than whole-page images. Texts, shapes, and charts can be freely edited and adjusted in Microsoft PowerPoint, Apple Keynote, or WPS.
 - 🎨 **Professional Aesthetics & Layouts**: No more cookie-cutter templates. AI intelligently tailors color schemes, typography hierarchies, and page compositions for a polished business look.
-- 🎭 **12 Built-in Themes**: Each theme is a verified design recipe — colours drawn from IBM Carbon, Tailwind, Radix and Microsoft Fluent 2, fonts restricted to families this machine really renders, plus motion rhythm, ornament vocabulary and per-page layout notes. Pick one with `ppt_themes`; every palette is checked against WCAG AA (≥4.5:1) by machine.
+- 🎭 **12 Built-in Themes**: Each theme is a verified design recipe — colours drawn from IBM Carbon, Tailwind, Radix and Microsoft Fluent 2, gradients adapted from curated Color Hunt and uiGradients palettes, fonts restricted to families this machine really renders, plus motion rhythm, type treatment, signature device, anti-patterns and per-page layout notes. Pick one with `ppt_themes`; every palette and gradient is checked against WCAG AA (≥4.5:1) by machine, and the page ground (including native gradients) survives into the PPTX.
 - 📈 **Smart Charts & Curated Visuals**: Automatically searches for royalty-free commercial images and plots high-resolution data charts using Python, replacing walls of text with engaging visuals.
 - 👁️ **AI Closed-Loop Visual Review**: The AI renders and visually inspects the generated PPT, proactively detecting and fixing text overflows, overlapping elements, or layout flaws.
 - ✨ **Slide Motion**: Per-page entrance animation for text and shapes — 29 effects covering fades, fly-ins, zooms, spins, and wipes, with per-paragraph builds, click-step sequencing, and slide transitions.
@@ -242,24 +242,34 @@ Once all of that is green, the PPT runtime diagnostics (`platform`, `tools`, `br
 
 ## Built-in theme library
 
-The plugin ships 12 design themes. A theme is not a shell template — it is a **verifiable design recipe**: colours, four type roles, a per-page layout bias, rhythm limits and the ornament vocabulary that theme permits. It gives the Art Direction pass a vetted starting point rather than doing the design for the model: `concept`, `audience_effect` and every page `job` and `takeaway` still come from the actual content.
+The plugin ships 12 design themes. A theme is not a shell template — it is a **verifiable design recipe**: colours, four type roles and how they are set, a per-page layout bias, rhythm limits, a signature device, anti-patterns, and the ornament and gradient vocabulary the theme permits. It gives the Art Direction pass a vetted starting point rather than doing the design for the model: `concept`, `audience_effect` and every page `job` and `takeaway` still come from the actual content.
 
-| Theme id | Name | Scenes | Base / inverted ground | Accent |
-| :--- | :--- | :--- | :--- | :--- |
-| `carbon-blueprint` | Carbon blueprint | technical proposals, architecture review, RFC | `#FFFFFF` / `#161616` | `#0043CE` |
-| `slate-review` | Slate review | quarterly review, business analysis, OKR | `#F8FAFC` / `#0F172A` | `#1D4ED8` |
-| `midnight-raise` | Midnight raise | fundraising, strategy, board | `#0B1220` / `#FFFFFF` | `#78A9FF` |
-| `paper-ink` | Paper and ink | academic report, whitepaper, long-form | `#F7F5F0` / `#111318` | `#9F1853` |
-| `editorial-serif` | Scholarly editorial | defence, research report, policy | `#F7F3F2` / `#171414` | `#8A3800` |
-| `telemetry-teal` | Telemetry teal | ops review, dashboards, performance | `#FFFFFF` / `#081A1C` | `#005D5D` |
-| `graphite-minimal` | Graphite minimal | specs, internal alignment, engineering docs | `#FCFCFC` / `#202020` | `#3A5BC7` |
-| `indigo-launch` | Indigo launch | product launch, release keynote | `#1E1B4B` / `#EEF2FF` | `#A5B4FC` |
-| `amber-academy` | Amber academy | training, workshop, onboarding | `#FFFBEB` / `#451A03` | `#92400E` |
-| `crimson-brief` | Crimson brief | marketing proposal, one-pager decision | `#FFFFFF` / `#4C0519` | `#BE123C` |
-| `fluent-azure` | Fluent azure | enterprise report, client proposal, tender | `#FFFFFF` / `#0A2E4A` | `#0F6CBD` |
-| `moss-annual` | Moss annual | annual report, ESG disclosure, long-horizon plan | `#F0FDF4` / `#14532D` | `#15803D` |
+| Theme id | Name | Scenes | Base / inverted ground | Accent | Gradient (poster pages) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `carbon-blueprint` | Carbon blueprint | technical proposals, architecture review, RFC | `#FFFFFF` / `#08131F` | `#0B57D0` | — |
+| `slate-review` | Slate review | quarterly review, business analysis, OKR | `#F7F8FA` / `#0D1524` | `#8A5A17` | — |
+| `midnight-raise` | Midnight raise | fundraising, strategy, board | `#07111F` / `#F6F8FC` | `#7FB0FF` | Moonlit Asteroid |
+| `paper-ink` | Paper and ink | academic report, whitepaper, long-form | `#FAF7F0` / `#14110F` | `#A3164B` | Warm Paper |
+| `editorial-serif` | Scholarly editorial | defence, research report, policy | `#F7F2EC` / `#191310` | `#8A3B12` | — |
+| `telemetry-teal` | Telemetry teal | ops review, dashboards, performance | `#F7FAFA` / `#04191B` | `#0B6B66` | Deep Sea Space |
+| `graphite-minimal` | Graphite minimal | specs, internal alignment, engineering docs | `#FAFAF9` / `#1C1B1A` | `#A83A10` | — |
+| `indigo-launch` | Indigo launch | product launch, release keynote | `#171334` / `#F3F1FF` | `#B6C2FF` | Indigo Bliss |
+| `amber-academy` | Amber academy | training, workshop, onboarding | `#FDF9EE` / `#221505` | `#9C5209` | Sun on the Horizon |
+| `crimson-brief` | Crimson brief | marketing proposal, one-pager decision | `#FFFDFC` / `#35060F` | `#B3163F` | Crimson Dusk |
+| `fluent-azure` | Fluent azure | enterprise report, client proposal, tender | `#FFFFFF` / `#04223A` | `#0F6CBD` | Royal Azure |
+| `moss-annual` | Moss annual | annual report, ESG disclosure, long-horizon plan | `#F7F9F1` / `#14200F` | `#3F6B2E` | Sage Wash |
 
-Colours are not improvised: every palette traces to a published design system (IBM Carbon, Tailwind, Radix, Microsoft Fluent 2, Open Color) and the code records that origin in `palette_source`. Each theme also carries an **inverted accent**, because one accent cannot clear 4.5:1 on both a light and a dark ground — that is a property of colour, not a preference — so the per-page plan says which one that page uses.
+Colours are not improvised: every palette traces to a published design system or public palette source (IBM Carbon, Tailwind, Radix, Microsoft Fluent 2, Color Hunt, uiGradients) and the code records that origin in `palette_source`. Gradients start from uiGradients ideas but are re-toned to the theme; a re-toned gradient is renamed (Indigo Bliss, Crimson Dusk, Royal Azure, Sage Wash) and its `note` names the source. Each theme also carries an **inverted accent**, because one accent cannot clear 4.5:1 on both a light and a dark ground — that is a property of colour, not a preference — so the per-page plan says which one that page uses.
+
+`ppt_themes` returns more than hex values:
+
+- `type_treatment` — tracking for display/label/body, label case, figure style and body measure, so the type hierarchy is executable
+- `signature` — the one device this theme repeats across the deck (a 240px year watermark, a 2px threshold rule)
+- `decoration` / `avoid` — permitted moves and the habits that would break the theme, both written as CSS-level instructions
+- `image_treatment` — how photography, screenshots and generated assets are cropped, toned and scrimmed so assets cannot derail the layout
+- `gradients` — zero to two linear gradients per theme, with angle, stops, tonal group, page cap and solid fallback; only cover, section, quote and ending pages may use one, at most two pages per deck
+
+The page ground lives on the `.ppt-slide` element; solid colours and theme gradients are exported as a **native PPTX slide background** (not a raster layer), so the HTML preview and PowerPoint agree and the gradient stays an editable vector fill.
 
 ### Usage
 
@@ -281,7 +291,10 @@ To follow a client brand instead, read its public style guide with `browser_visi
 
 - Canvas 1280×720, margins 72px horizontal / 64px vertical, content area 1136×592, 12 columns with 24px gutters, radii limited to 4 / 8 / 12px
 - Type scale: cover title 72px, page title 44px, section title 32px, lead 26px, body 24px, caption 16px, metric 88px, code 17px
-- Ornament is a closed set: 1px and 2px borders, radii, tonal steps, opacity, z-index, type contrast, grid alignment, and solid or `linear-gradient` backgrounds
+- Typography: tighten display tracking per `type_treatment.display_tracking`, set labels in the declared case at `label_tracking`, keep body copy inside `measure`, and never use more than two families on one page
+- Ornament is a closed set: 1px and 2px borders, radii, tonal steps, opacity, z-index, type contrast, grid alignment, and solid or theme-provided `linear-gradient` backgrounds
+- Gradients are scarce: use only the one `ppt_themes` returns for that page, only on cover, section, quote or ending pages, at most two pages per deck, and always with a solid `background-color` fallback equal to the first stop
+- The page ground lives on `.ppt-slide`; solid colours and native linear gradients both enter the PPTX. Never fake a ground with a full-bleed `shape`
 - `box-shadow`, `transform`, `filter`, `clip-path` and `content` are rejected outright, so depth comes from borders and tonal steps and the HTML preview cannot diverge from the PPTX
 
 ## Motion and fonts
@@ -409,7 +422,7 @@ This plugin is not built from scratch. The table below lists only the third-part
 
 | Source | Use |
 | --- | --- |
-| Public palettes of IBM Carbon, Tailwind CSS, Radix Colors and Microsoft Fluent 2 | Colour sources for the 12 built-in themes |
+| Public palettes of IBM Carbon, Tailwind CSS, Radix Colors and Microsoft Fluent 2; Color Hunt and uiGradients for colours and gradients | Colour, gradient and typography sources for the 12 built-in themes |
 | WCAG 2.1 AA (≥4.5:1) | The measured contrast rule applied to every background × body / accent colour pair |
 
 ### Host SDK

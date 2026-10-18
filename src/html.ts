@@ -80,8 +80,13 @@ export async function validateDeckHtmlSource(
       }
     }
   }
-  const css = [...document.querySelectorAll('style')].map(style => style.textContent ?? '').join('\n')
-    + '\n' + [...document.querySelectorAll<HTMLElement>('[style]')].map(element => element.getAttribute('style') ?? '').join('\n')
+  // Each block is terminated before the join: an inline `style` attribute may
+  // end without a semicolon, and a `font-family` there would otherwise swallow
+  // the first declaration of the next attribute when the CSS is concatenated.
+  const css = [
+    ...[...document.querySelectorAll('style')].map(style => style.textContent ?? ''),
+    ...[...document.querySelectorAll<HTMLElement>('[style]')].map(element => element.getAttribute('style') ?? ''),
+  ].map(block => `${block};`).join('\n')
   if (REMOTE_RESOURCE.test(css)) issues.push('CSS contains a remote, data, script, or file resource')
   if (BLOCKED_CSS.test(css)) issues.push('CSS contains an unsupported effects or animation property')
   for (const property of cssProperties(css)) {

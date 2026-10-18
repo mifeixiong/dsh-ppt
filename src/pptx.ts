@@ -14,6 +14,7 @@ import type { SessionOwner } from './session-resources.ts'
 import { validateDeckHtmlSource } from './html.ts'
 import { rewritePptxTransitions, type SlideTransitionPlan } from './transitions.ts'
 import { rewritePptxAnimations, type AnimationPlan } from './animation.ts'
+import { planSlideBackground, rewritePptxSlideBackgrounds, type SlideBackgroundPlan } from './slide-background.ts'
 
 export type PptFallbackMode = 'reject' | 'rasterize-element'
 
@@ -66,6 +67,10 @@ function textOptions(style: ElementStyleIR) {
     margin: 0, breakLine: false, fit: 'none' as const, align,
     valign: style.verticalAlign === 'bottom' ? 'bottom' : style.verticalAlign === 'middle' ? 'mid' : 'top',
     lineSpacing: pxToPoints(style.lineHeightPx),
+    // Wide-tracked labels are a theme signature; without this the PPTX loses
+    // the tracking the HTML preview was designed around. Display tracking is
+    // often negative, so carry both directions.
+    ...(style.letterSpacingPx !== 0 ? { charSpacing: pxToPoints(style.letterSpacingPx) } : {}),
     ...(fill === undefined ? {} : { fill: { color: fill.hex, transparency: fill.transparency } }),
     ...(style.borderStyle === 'none' || style.borderWidthPx <= 0 || line === undefined
       ? { line: { type: 'none' as const } }
@@ -134,10 +139,11 @@ function addNativeElement(pptx: PptxGenJS, slide: ReturnType<PptxGenJS['addSlide
   const fill = color(element.style.backgroundColor)
   const line = color(element.style.borderColor)
   const radius = Number.parseFloat(element.style.borderRadius)
-  const shape = element.box.w <= 2 || element.box.h <= 2
-    ? pptx.ShapeType.line
-    : /%/u.test(element.style.borderRadius) && radius >= 50 ? pptx.ShapeType.ellipse
-      : radius > 0 ? pptx.ShapeType.roundRect : pptx.ShapeType.rect
+  // Rules are ordinary filled rectangles, not PowerPoint line shapes. A 1px
+  // rule drawn as a line lost its fill and disappeared from the exported slide,
+  // which silently deleted every hairline rule the themes rely on.
+  const shape = /%/u.test(element.style.borderRadius) && radius >= 50 ? pptx.ShapeType.ellipse
+    : radius > 0 ? pptx.ShapeType.roundRect : pptx.ShapeType.rect
   slide.addShape(shape, {
     ...base,
     fill: fill === undefined ? { type: 'none' } : { color: fill.hex, transparency: fill.transparency },
@@ -264,6 +270,19 @@ export async function createPptx(
     }
   }
 
+  // A gradient cannot be expressed through the pptxgenjs slide API, so it is
+  // omitted here and injected into the finished package below. A solid color
+  // still uses the native API and stays byte-identical to a color-only deck.
+  const backgroundPlans = new Map<number, SlideBackgroundPlan>()
+  for (const slide of ir.slides) {
+    const plan = planSlideBackground(slide.background)
+    if (plan !== undefined) backgroundPlans.set(slide.page, plan)
+  }
+  const gradientPlans = new Map<number, SlideBackgroundPlan>()
+  for (const [page, plan] of backgroundPlans) {
+    if (plan.gradient !== undefined) gradientPlans.set(page, plan)
+  }
+
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'DSH_PPT_16_9', width: SLIDE_WIDTH_IN, height: SLIDE_HEIGHT_IN })
   pptx.layout = 'DSH_PPT_16_9'
@@ -274,6 +293,8 @@ export async function createPptx(
   let nativeElementCount = 0
   for (const slideIr of ir.slides) {
     const slide = pptx.addSlide()
+    const background = backgroundPlans.get(slideIr.page)
+    if (background !== undefined && background.gradient === undefined) slide.background = { color: background.solid }
     for (const element of slideIr.elements) {
       addNativeElement(pptx, slide, element, workspace, artifactRoot)
       if (!rasterized.some(item => item.page === slideIr.page && item.element_id === element.id)) nativeElementCount += 1
@@ -285,10 +306,12 @@ export async function createPptx(
     await pptx.writeFile({ fileName: temporary, compression: true })
     throwIfAborted(signal, 'PPT_CREATE_ABORTED')
     const written = new Uint8Array(await readFile(temporary))
-    // The transition and animation plans rewrite slide parts inside the package before
-    // the atomic commit. Without a plan the bytes written by pptxgenjs are committed
-    // untouched, so a deck that opts out stays byte-comparable with its source.
+    // Background, transition, and animation plans rewrite slide parts inside the
+    // package before the atomic commit. Without a plan the bytes written by
+    // pptxgenjs are committed untouched, so a deck that opts out stays
+    // byte-comparable with its source.
     let bytes: Uint8Array = written
+    bytes = rewritePptxSlideBackgrounds(bytes, gradientPlans)
     if (transitions !== undefined) bytes = rewritePptxTransitions(bytes, transitions)
     if (animations !== undefined) bytes = rewritePptxAnimations(bytes, animations)
     inspectPptxPackage(bytes, outline.length)

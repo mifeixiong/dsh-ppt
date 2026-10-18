@@ -16,7 +16,7 @@ import { applyVisualReview, type PptQualityReport } from './quality.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
 import type { SessionOwner } from './session-resources.ts'
 import {
-  contrastRatio, findTheme, listThemes, planThemePages, PPT_THEMES, themeFindings, themeSummary,
+  contrastRatio, findTheme, gradientCss, listThemes, planThemePages, PPT_THEMES, themeFindings, themeSummary,
   validateTheme, type ArtBackground, type PptTheme,
 } from './themes.ts'
 
@@ -506,6 +506,7 @@ const PPT_THEMES_OUTPUT = {
           display_font: { type: 'string', required: true },
           body_font: { type: 'string', required: true },
           signature: { type: 'string', required: true },
+          gradient: { type: 'string', required: true },
         },
         additionalProperties: false,
       },
@@ -541,6 +542,37 @@ const PPT_THEMES_OUTPUT = {
           additionalProperties: false,
         },
         accent_usage: { type: 'string', required: true },
+        signature: { type: 'string', required: true },
+        type_treatment: {
+          type: 'object', required: true,
+          properties: {
+            display_tracking: { type: 'string', required: true },
+            label_tracking: { type: 'string', required: true },
+            body_tracking: { type: 'string', required: true },
+            label_case: { type: 'string', required: true },
+            numerals: { type: 'string', required: true },
+            measure: { type: 'string', required: true },
+          },
+          additionalProperties: false,
+        },
+        image_treatment: { type: 'string', required: true },
+        avoid: { type: 'array', items: { type: 'string' }, required: true },
+        gradients: {
+          type: 'array', required: true,
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', required: true },
+              angle: { type: 'integer', required: true },
+              stops: { type: 'array', items: { type: 'string' }, required: true },
+              group: { type: 'string', required: true },
+              max_pages: { type: 'integer', required: true },
+              note: { type: 'string', required: true },
+              css: { type: 'string', required: true },
+            },
+            additionalProperties: false,
+          },
+        },
         decoration: { type: 'array', items: { type: 'string' }, required: true },
         layout_notes: {
           type: 'array', required: true,
@@ -582,6 +614,16 @@ const PPT_THEMES_OUTPUT = {
             additionalProperties: false,
           },
           note: { type: 'string', required: true },
+          gradient: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', required: true },
+              css: { type: 'string', required: true },
+              fallback: { type: 'string', required: true },
+              note: { type: 'string', required: true },
+            },
+            additionalProperties: false,
+          },
         },
         additionalProperties: false,
       },
@@ -663,6 +705,7 @@ function pptThemesTool() {
         frame_policy: string
         colors: { background: string; surface: string; text: string; accent: string }
         note: string
+        gradient?: { name: string; css: string; fallback: string; note: string }
       }> | undefined
       if (args.page_types !== undefined) {
         if (args.page_types.length === 0 || args.page_types.length > 60) {
@@ -682,7 +725,8 @@ function pptThemesTool() {
             colors: {
               background: colors.background, surface: colors.surface, text: colors.text, accent: colors.accent,
             },
-            note: `${compositionNote} ${colors.note}`,
+            note: `${compositionNote} ${colors.note}${entry.gradient === undefined ? '' : ` Gradient allowed on this page: ${entry.gradient.css} (fallback ${entry.gradient.fallback}). ${entry.gradient.note}`}`,
+            ...(entry.gradient === undefined ? {} : { gradient: { ...entry.gradient } }),
           }
         })
       }
@@ -711,6 +755,19 @@ function pptThemesTool() {
             code: { ...theme.typography.code },
           },
           accent_usage: `Use ${theme.palette.accent} as art_direction.palette.accent. On pages whose background_role is inverse or accent, put ${theme.palette.accent_inverted} in the HTML where the accent colour would otherwise go; the plan schema carries one accent, so this swap lives in the markup.`,
+          signature: theme.signature,
+          type_treatment: { ...theme.type_treatment },
+          image_treatment: theme.image_treatment,
+          avoid: [...theme.avoid],
+          gradients: theme.gradients.map(gradient => ({
+            name: gradient.name,
+            angle: gradient.angle,
+            stops: [...gradient.stops],
+            group: gradient.group,
+            max_pages: gradient.max_pages,
+            note: gradient.note,
+            css: gradientCss(gradient),
+          })),
           decoration: [...theme.decoration],
           layout_notes: Object.entries(theme.layout_notes).map(([composition, note]) => ({ composition, note: note as string })),
           composition_cycle: [...theme.composition_cycle],

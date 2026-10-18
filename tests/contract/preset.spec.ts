@@ -199,9 +199,17 @@ describe('PPT preset contract', () => {
     applyTools(fixture.context as never)
     const themes = fixture.getDefinitions().get('ppt_themes') as unknown as {
       execute: (args: Record<string, unknown>, exec: unknown) => Promise<{
-        themes: Array<{ id: string; palette_source: string }>
-        theme?: { id: string; palette: { accent: string; accent_inverted: string }; decoration: string[] }
-        pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string } }>
+        themes: Array<{ id: string; palette_source: string; signature: string; gradient: string }>
+        theme?: {
+          id: string
+          palette: { accent: string; accent_inverted: string }
+          decoration: string[]
+          signature: string
+          avoid: string[]
+          type_treatment: { label_tracking: string }
+          gradients: Array<{ name: string; css: string; fallback: string }>
+        }
+        pages?: Array<{ page: number; composition: string; colors: { background: string; accent: string }; gradient?: { css: string } }>
       }>
     }
 
@@ -209,18 +217,26 @@ describe('PPT preset contract', () => {
     expect(catalog.themes).toHaveLength(12)
     expect(catalog.theme).toBeUndefined()
     expect(catalog.themes.every(theme => theme.palette_source.length > 0)).toBe(true)
+    expect(catalog.themes.every(theme => theme.signature.length > 0)).toBe(true)
 
     const detail = await themes.execute({ theme_id: 'carbon-blueprint' }, {})
-    expect(detail.theme?.palette.accent).toBe('#0043CE')
-    expect(detail.theme?.palette.accent_inverted).toBe('#78A9FF')
+    expect(detail.theme?.palette.accent).toBe('#0B57D0')
+    expect(detail.theme?.palette.accent_inverted).toBe('#8AB4FF')
     expect(detail.theme?.decoration.length).toBeGreaterThan(0)
+    expect(detail.theme?.avoid.length).toBeGreaterThan(0)
+    expect(detail.theme?.type_treatment.label_tracking).toBe('0.16em')
+    expect(detail.theme?.gradients).toEqual([])
 
     const planned = await themes.execute({ theme_id: 'midnight-raise', page_types: ['cover', 'content', 'data', 'ending'] }, {})
     expect(planned.pages).toHaveLength(4)
     expect(planned.pages?.map(page => page.page)).toEqual([1, 2, 3, 4])
-    // The dark-first theme opens on its inverted ground, so page one must carry
-    // the inverted accent rather than the base one.
-    expect(planned.pages?.[0]?.colors.accent).toBe('#0043CE')
+    // This theme opens on its dark base group, so page one carries the base
+    // accent rather than the inverted one.
+    expect(planned.pages?.[0]?.colors.accent).toBe('#7FB0FF')
+    // The aurora gradient is a poster-page field: the cover gets it, the data
+    // page does not.
+    expect(planned.pages?.[0]?.gradient?.css).toBe('linear-gradient(160deg, #07111F, #10294D, #0B3A6B)')
+    expect(planned.pages?.[2]?.gradient).toBeUndefined()
 
     await expect(themes.execute({ theme_id: 'no-such-theme' }, {})).rejects.toMatchObject({ code: 'PPT_THEME_UNKNOWN' })
     await expect(themes.execute({ page_types: ['cover'] }, {})).rejects.toMatchObject({ code: 'PPT_THEME_INVALID' })

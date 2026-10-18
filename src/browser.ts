@@ -294,6 +294,11 @@ export class BrowserRuntime {
         const parsed = Number.parseFloat(value)
         return Number.isFinite(parsed) ? parsed : fallback
       }
+      // CSS casing is a visual change: the extracted IR is what PowerPoint
+      // receives, so an uppercase label has to become uppercase text.
+      const cased = (value: string, transform: string) => transform === 'uppercase'
+        ? value.toUpperCase()
+        : transform === 'lowercase' ? value.toLowerCase() : value
       const textRuns = (element: HTMLElement) => {
         const runs: Array<{ text: string; fontFamily: string; fontSizePx: number; fontWeight: number; fontStyle: string; color: string; textDecoration: string }> = []
         const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
@@ -303,7 +308,7 @@ export class BrowserRuntime {
           const parent = node.parentElement ?? element
           const style = getComputedStyle(parent)
           runs.push({
-            text: value, fontFamily: style.fontFamily.split(',')[0]!.trim().replace(/^['"]|['"]$/g, ''),
+            text: cased(value, style.textTransform), fontFamily: style.fontFamily.split(',')[0]!.trim().replace(/^['"]|['"]$/g, ''),
             fontSizePx: px(style.fontSize), fontWeight: Number.parseInt(style.fontWeight, 10) || 400,
             fontStyle: style.fontStyle, color: style.color, textDecoration: style.textDecorationLine,
           })
@@ -314,6 +319,7 @@ export class BrowserRuntime {
       if (pages.length !== expected) throw new Error(`expected ${expected} slides, found ${pages.length}`)
       return pages.map((slide, slideIndex) => {
         const slideBox = slide.getBoundingClientRect()
+        const slideStyle = getComputedStyle(slide)
         const elements = [...slide.querySelectorAll<HTMLElement>('[data-ppt-id][data-ppt-kind]')].map((element, domOrder) => {
           const box = element.getBoundingClientRect()
           const style = getComputedStyle(element)
@@ -329,11 +335,13 @@ export class BrowserRuntime {
               borderWidthPx: px(style.borderTopWidth), borderStyle: style.borderTopStyle,
               borderRadius: style.borderRadius, textAlign: style.textAlign, verticalAlign: style.verticalAlign,
               lineHeightPx: style.lineHeight === 'normal' ? px(style.fontSize) * 1.2 : px(style.lineHeight),
+              letterSpacingPx: style.letterSpacing === 'normal' ? 0 : px(style.letterSpacing),
+              textTransform: style.textTransform,
               opacity: px(style.opacity, 1), objectFit: style.objectFit, objectPosition: style.objectPosition,
             },
           }
           if (kind === 'text') {
-            item.text = element.innerText
+            item.text = cased(element.innerText, style.textTransform)
             item.runs = textRuns(element)
             if (style.backgroundImage !== 'none') item.unsupportedReason = 'gradient or background image on text'
           } else if (kind === 'image') {
@@ -352,7 +360,12 @@ export class BrowserRuntime {
           }
           return item
         }).sort((a, b) => a.z - b.z || a.domOrder - b.domOrder)
-        return { page: slideIndex + 1, elements, speakerNotes: [] }
+        return {
+          page: slideIndex + 1,
+          elements,
+          speakerNotes: [],
+          background: { color: slideStyle.backgroundColor, image: slideStyle.backgroundImage },
+        }
       })
     }, pageCount)
     return { widthPx: 1280, heightPx: 720, slides }

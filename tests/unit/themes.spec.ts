@@ -4,7 +4,7 @@ import { validatePptOutline } from '../../src/outline.ts'
 import { resolveTheme, themeConformanceFindings } from '../../src/outline.ts'
 import { SLIDE_TYPES } from '../../src/outline.ts'
 import {
-  contrastRatio, findTheme, listThemes, planThemePages, PPT_THEMES, relativeLuminance,
+  contrastRatio, findTheme, gradientCss, listThemes, planThemePages, PPT_THEMES, relativeLuminance,
   themeFindings, themeFindingsForPlan, themePaletteAndType, validateTheme,
 } from '../../src/themes.ts'
 import { MINIMAL_ART_DIRECTION } from '../fixtures/minimal-art-direction.ts'
@@ -43,6 +43,54 @@ describe('theme library', () => {
   it('holds every built-in palette to WCAG AA', () => {
     const findings = PPT_THEMES.flatMap(theme => themeFindings(theme).filter(finding => finding.severity === 'error'))
     expect(findings).toEqual([])
+  })
+
+  it('gives every theme a type voice, a signature and anti-patterns', () => {
+    for (const theme of PPT_THEMES) {
+      expect(theme.signature.length).toBeGreaterThan(10)
+      expect(theme.image_treatment.length).toBeGreaterThan(20)
+      expect(theme.avoid.length).toBeGreaterThanOrEqual(1)
+      expect(theme.type_treatment.measure.length).toBeGreaterThan(10)
+      expect(['sentence', 'upper']).toContain(theme.type_treatment.label_case)
+      expect(['tabular', 'proportional']).toContain(theme.type_treatment.numerals)
+      // A themed layout must say how every poster role is built, not just the
+      // four roles the old catalogue happened to mention.
+      for (const composition of ['hero', 'editorial-split', 'asymmetric-split', 'process', 'layered', 'data-focus', 'quote', 'full-bleed', 'closing']) {
+        expect(theme.layout_notes[composition as keyof typeof theme.layout_notes], `${theme.id} ${composition}`).toBeTruthy()
+      }
+    }
+  })
+
+  it('keeps gradients rare, poster-only and never over budget', () => {
+    for (const theme of PPT_THEMES) {
+      expect(theme.gradients.length).toBeLessThanOrEqual(2)
+      expect(new Set(theme.gradients.map(gradient => gradient.group)).size).toBe(theme.gradients.length)
+      for (const gradient of theme.gradients) {
+        expect(gradient.stops.length).toBeGreaterThanOrEqual(2)
+        expect(gradientCss(gradient)).toBe(`linear-gradient(${gradient.angle}deg, ${gradient.stops.join(', ')})`)
+      }
+      const plan = planThemePages(theme, [...SLIDE_TYPES])
+      for (const gradient of theme.gradients) {
+        const used = plan.filter(entry => entry.gradient?.name === gradient.name)
+        expect(used.length).toBeLessThanOrEqual(gradient.max_pages)
+        for (const entry of used) {
+          expect(['hero', 'full-bleed', 'closing', 'quote']).toContain(entry.composition)
+          expect(entry.gradient?.fallback).toBe(gradient.stops[0])
+        }
+      }
+    }
+  })
+
+  it('rejects a gradient whose text would not clear AA on every stop', () => {
+    const theme = findTheme('midnight-raise', PPT_THEMES)
+    const broken = {
+      ...theme,
+      gradients: [{
+        ...theme.gradients[0]!,
+        stops: ['#F7F8FC', '#F7F8FC'],
+      }],
+    }
+    expect(themeFindings(broken).filter(finding => finding.severity === 'error')).not.toEqual([])
   })
 
   it('rejects a theme whose font is outside the approved registry', () => {

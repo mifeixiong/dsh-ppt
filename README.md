@@ -42,7 +42,7 @@
 
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
-- 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，字体只使用本机真能渲染的家族，并附带动效节奏、装饰手法与逐页版式配方。调用 `ppt_themes` 直接选用，配色对比度全部经 WCAG AA（≥4.5:1）实算验证。
+- 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
 - 📈 **智能图表与精选配图**：自动搜索合规免版权商业配图，并根据数据自动绘制高品质图表，告别枯燥的大段纯文本。
 - 👁️ **AI 视觉闭环审稿**：AI 会把做好的 PPT 真正“渲染并审阅一遍”，自动发现并纠正文字溢出、重叠与排版瑕疵，确保出片品质。
 - ✨ **放映文字动画**：文字与图形可以按页配置入场动画——淡入、飞入、缩放、旋转、擦除等 29 种效果，支持按段落逐条构建、点击步编排与整页转场。
@@ -242,24 +242,34 @@ node --input-type=module -e "import('sharp').then(() => console.log('sharp ok'))
 
 ## 内置主题库
 
-插件内置 12 套设计主题。主题不是套壳模板，而是**一份可校验的设计配方**：配色、四个字体角色、逐页版式倾向、节奏限制，以及这套主题允许的装饰手法。它给 Art Direction 一个经过验证的起点，而不是替 AI 做设计——`concept`、`audience_effect`、每页的 `job` 与 `takeaway` 仍然由当前 Agent 按实际内容写。
+插件内置 12 套设计主题。主题不是套壳模板，而是**一份可校验的设计配方**：配色、四个字体角色及其排印规则、逐页版式倾向、节奏限制、签名手法、禁用习惯，以及这套主题允许的装饰与渐变。它给 Art Direction 一个经过验证的起点，而不是替 AI 做设计——`concept`、`audience_effect`、每页的 `job` 与 `takeaway` 仍然由当前 Agent 按实际内容写。
 
-| 主题 id | 名称 | 适用场景 | 底色（主 / 反色） | 强调色 |
-| :--- | :--- | :--- | :--- | :--- |
-| `carbon-blueprint` | 碳素蓝图 | 技术方案、架构评审、RFC 评审 | `#FFFFFF` / `#161616` | `#0043CE` |
-| `slate-review` | 板岩复盘 | 季度复盘、经营分析、OKR 回顾 | `#F8FAFC` / `#0F172A` | `#1D4ED8` |
-| `midnight-raise` | 午夜融资 | 融资路演、战略汇报、董事会 | `#0B1220` / `#FFFFFF` | `#78A9FF` |
-| `paper-ink` | 纸墨 | 学术报告、白皮书、深度长文 | `#F7F5F0` / `#111318` | `#9F1853` |
-| `editorial-serif` | 学刊 | 学术答辩、研究报告、政策解读 | `#F7F3F2` / `#171414` | `#8A3800` |
-| `telemetry-teal` | 遥测青 | 运维复盘、数据看板汇报、性能评审 | `#FFFFFF` / `#081A1C` | `#005D5D` |
-| `graphite-minimal` | 石墨极简 | 产品规格、内部对齐、工程文档 | `#FCFCFC` / `#202020` | `#3A5BC7` |
-| `indigo-launch` | 靛蓝发布 | 产品发布、新版本宣讲、大会 Keynote | `#1E1B4B` / `#EEF2FF` | `#A5B4FC` |
-| `amber-academy` | 琥珀课堂 | 培训、工作坊、新人上手 | `#FFFBEB` / `#451A03` | `#92400E` |
-| `crimson-brief` | 绯红简报 | 营销提案、立项申请、一页纸决策 | `#FFFFFF` / `#4C0519` | `#BE123C` |
-| `fluent-azure` | 流蓝企业 | 企业汇报、客户方案、招标应答 | `#FFFFFF` / `#0A2E4A` | `#0F6CBD` |
-| `moss-annual` | 苔绿年报 | 年度报告、ESG 披露、长期规划 | `#F0FDF4` / `#14532D` | `#15803D` |
+| 主题 id | 名称 | 适用场景 | 底色（主 / 反色） | 强调色 | 渐变（仅海报页） |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `carbon-blueprint` | 碳素蓝图 | 技术方案、架构评审、RFC 评审 | `#FFFFFF` / `#08131F` | `#0B57D0` | — |
+| `slate-review` | 板岩复盘 | 季度复盘、经营分析、OKR 回顾 | `#F7F8FA` / `#0D1524` | `#8A5A17` | — |
+| `midnight-raise` | 午夜融资 | 融资路演、战略汇报、董事会 | `#07111F` / `#F6F8FC` | `#7FB0FF` | Moonlit Asteroid |
+| `paper-ink` | 纸墨 | 学术报告、白皮书、深度长文 | `#FAF7F0` / `#14110F` | `#A3164B` | Warm Paper |
+| `editorial-serif` | 学刊 | 学术答辩、研究报告、政策解读 | `#F7F2EC` / `#191310` | `#8A3B12` | — |
+| `telemetry-teal` | 遥测青 | 运维复盘、数据看板汇报、性能评审 | `#F7FAFA` / `#04191B` | `#0B6B66` | Deep Sea Space |
+| `graphite-minimal` | 石墨极简 | 产品规格、内部对齐、工程文档 | `#FAFAF9` / `#1C1B1A` | `#A83A10` | — |
+| `indigo-launch` | 靛蓝发布 | 产品发布、新版本宣讲、大会 Keynote | `#171334` / `#F3F1FF` | `#B6C2FF` | Indigo Bliss |
+| `amber-academy` | 琥珀课堂 | 培训、工作坊、新人上手 | `#FDF9EE` / `#221505` | `#9C5209` | Sun on the Horizon |
+| `crimson-brief` | 绯红简报 | 营销提案、立项申请、一页纸决策 | `#FFFDFC` / `#35060F` | `#B3163F` | Crimson Dusk |
+| `fluent-azure` | 流蓝企业 | 企业汇报、客户方案、招标应答 | `#FFFFFF` / `#04223A` | `#0F6CBD` | Royal Azure |
+| `moss-annual` | 苔绿年报 | 年度报告、ESG 披露、长期规划 | `#F7F9F1` / `#14200F` | `#3F6B2E` | Sage Wash |
 
-配色不是拍脑袋定的：每套主题的色值都取自公开设计系统（IBM Carbon、Tailwind、Radix、Microsoft Fluent 2、Open Color），并在代码里以 `palette_source` 记录了出处。每套主题还带一个**反色强调色**——因为同一个强调色不可能同时在一个浅底和一个深底上都达到 4.5:1，这是颜色本身的物理限制，所以主题成对给出，逐页方案会指明该页用哪一个。
+配色不是拍脑袋定的：每套主题的色值都取自公开设计系统与公开色板（IBM Carbon、Tailwind、Radix、Microsoft Fluent 2、Color Hunt、uiGradients），并在代码里以 `palette_source` 记录了出处；渐变沿用 uiGradients 的灵感，但会按主题重新调色，重调过的会在 `note` 里注明来源并改名（如 Indigo Bliss、Crimson Dusk）。每套主题还带一个**反色强调色**——因为同一个强调色不可能同时在一个浅底和一个深底上都达到 4.5:1，这是颜色本身的物理限制，所以主题成对给出，逐页方案会指明该页用哪一个。
+
+`ppt_themes` 返回的配方不再只有色号，还包含：
+
+- `type_treatment`：标题/标签/正文的字距、标签大小写、数字是否等宽、正文每行字数——排印层级的可执行规则
+- `signature`：这套主题的签名手法（例如「徽章式 240px 年份水印」「一条 2px 阈值线」），整套 deck 只重复这一件事
+- `decoration` / `avoid`：允许的装饰动作与会破坏主题的坏习惯，两者都写成可执行的 CSS 语言
+- `image_treatment`：摄影、截图与生成式素材的处理方式（双色调、裁切比例、叠加浓度），避免素材把版式带跑
+- `gradients`：每套主题 0–2 条线性渐变，带角度、色标、所属色组、页数上限与纯色降级说明；只有封面、章节页、引用页与结束页可以用，每套 deck 最多 2 页
+
+页面底色写在 `.ppt-slide` 元素上，纯色与主题渐变都会导出为 **PPTX 原生幻灯片底色**（不是截图层）；因此 HTML 预览、PowerPoint 里看到的底一致，渐变也仍然是可编辑的矢量填充。
 
 ### 怎么用
 
@@ -287,7 +297,10 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 - 画布 1280×720，页边距水平 72px / 垂直 64px，内容区 1136×592，12 栏、列间距 24px，圆角只用 4 / 8 / 12px
 - 字号层级：封面主标题 72px、页标题 44px、小节标题 32px、导语 26px、正文 24px、辅助 16px、指标数字 88px、代码 17px
-- 装饰是封闭集合：1px / 2px 边框、圆角、色阶差、opacity、z-index、字号对比、栅格对齐、纯色或 `linear-gradient` 背景
+- 排印：标题按 `type_treatment.display_tracking` 收紧字距，标签全大写并拉开到 `label_tracking`，正文受 `measure` 约束；同一页最多两种字族
+- 装饰是封闭集合：1px / 2px 边框、圆角、色阶差、opacity、z-index、字号对比、栅格对齐、纯色或主题返回的 `linear-gradient` 背景
+- 渐变是稀缺资源：只允许用 `ppt_themes` 为当前页返回的那一条，只出现在封面/章节/引用/结束页，每套 deck 最多 2 页，并且必须同时写与首个色标一致的 `background-color` 降级
+- 页面底色写在 `.ppt-slide` 上，纯色与原生线性渐变都会进入 PPTX；不要用铺满整页的 `shape` 伪装底色
 - 投影（`box-shadow`）、`transform`、`filter`、`clip-path`、`content` 一律禁止——立体感只能靠边框与色阶，这样 HTML 预览与 PPTX 产物才不会出现保真断层
 
 ## 放映动效与字体
@@ -415,7 +428,7 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 | 来源 | 用途 |
 | --- | --- |
-| IBM Carbon、Tailwind CSS、Radix Colors、Microsoft Fluent 2 的公开色板 | 12 套内置主题的取色依据 |
+| IBM Carbon、Tailwind CSS、Radix Colors、Microsoft Fluent 2 的公开色板；Color Hunt 与 uiGradients 的公开配色/渐变 | 12 套内置主题的取色、渐变与排印依据 |
 | WCAG 2.1 AA（≥4.5:1） | 每层底色 × 正文 / 强调色对比度的实算校验标准 |
 
 ### 宿主 SDK

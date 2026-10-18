@@ -30,6 +30,10 @@ export interface ElementStyleIR {
   textAlign: string
   verticalAlign: string
   lineHeightPx: number
+  /** Computed letter-spacing in px; `normal` becomes 0 so PPTX can carry tracking. */
+  letterSpacingPx: number
+  /** Computed text-transform; `uppercase` labels are exported as uppercase text. */
+  textTransform: string
   opacity: number
   objectFit: string
   objectPosition: string
@@ -50,10 +54,18 @@ export interface ElementIR {
   unsupportedReason?: string
 }
 
+export interface SlideBackgroundIR {
+  /** Computed CSS background-color, e.g. `rgb(8, 17, 32)`; empty/`transparent` allowed. */
+  color: string
+  /** Computed CSS background-image; `none` when absent, otherwise e.g. `linear-gradient(160deg, rgb(8, 17, 32) 0%, rgb(16, 41, 77) 55%, rgb(11, 58, 107) 100%)`. */
+  image: string
+}
+
 export interface SlideIR {
   page: number
   elements: ElementIR[]
   speakerNotes: string[]
+  background?: SlideBackgroundIR
 }
 
 export interface DeckIR {
