@@ -19,8 +19,12 @@ const ALLOWED_CSS_PREFIXES = [
   'flex', 'grid', 'gap', 'row-gap', 'column-gap', 'align-', 'justify-', 'place-', 'order', 'margin', 'padding',
   'font', 'line-height', 'letter-spacing', 'text-', 'white-space', 'word-break', 'overflow', 'color', 'background',
   'border', 'border-radius', 'opacity', 'z-index', 'object-fit', 'object-position', 'list-style', 'vertical-align',
+  'transform', 'transform-origin',
 ]
-const BLOCKED_CSS = /(?:^|[;{])\s*(?:transform|filter|animation|transition|clip-path|mask|mix-blend-mode|perspective|backdrop-filter|box-shadow)\s*:/imu
+// `transform` is deliberately not blocked: a pure rotate on a text leaf is a
+// supported poster move. The browser pass rejects scale, skew, translate and
+// ancestor transforms, because only pure leaf rotation survives into PPTX.
+const BLOCKED_CSS = /(?:^|[;{])\s*(?:filter|animation|transition|clip-path|mask|mix-blend-mode|perspective|backdrop-filter|box-shadow)\s*:/imu
 const REMOTE_RESOURCE = /(?:url\s*\(\s*['"]?\s*(?:https?:|data:|javascript:|file:)|@import\b)/iu
 
 export interface HtmlCreateResult {

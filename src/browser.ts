@@ -222,6 +222,50 @@ export class BrowserRuntime {
       const usedFonts = new Set<string>()
       if (slides.length !== count) errors.push(`expected ${count} slides but found ${slides.length}`)
       const designPages: Array<{ page: number; anchorAreaRatio?: number; frameCount: number; leafBoxes: SlideLeafBox[]; roleStyles: Array<{ role: string; fontFamily: string; fontWeight: number }> }> = []
+      const parseRotation = (value: string): number | undefined => {
+        if (value === 'none') return 0
+        const match = /^matrix\(([^)]*)\)$/u.exec(value)
+        if (match === null) return undefined
+        const parts = match[1]!.split(',').map(Number)
+        if (parts.length !== 6 || parts.some(part => !Number.isFinite(part))) return undefined
+        const [a, b, c, d, e, f] = parts as [number, number, number, number, number, number]
+        if (Math.abs(e) > 0.001 || Math.abs(f) > 0.001) return undefined
+        if (Math.abs(Math.hypot(a, b) - 1) > 0.001 || Math.abs(a - d) > 0.001 || Math.abs(b + c) > 0.001) return undefined
+        return Math.round(Math.atan2(b, a) * 18000 / Math.PI) / 100
+      }
+      const originCentered = (leaf: HTMLElement, style: CSSStyleDeclaration): boolean => {
+        const parts = style.transformOrigin.split(' ').filter(Boolean)
+        const length = (value: string | undefined, size: number): number => value === undefined ? size / 2
+          : value.endsWith('%') ? Number.parseFloat(value) / 100 * size : Number.parseFloat(value)
+        const x = length(parts[0], leaf.offsetWidth)
+        const y = length(parts[1] ?? '50%', leaf.offsetHeight)
+        return Math.abs(x - leaf.offsetWidth / 2) < 0.5 && Math.abs(y - leaf.offsetHeight / 2) < 0.5
+      }
+      const ancestorTransformed = (leaf: HTMLElement, slide: HTMLElement): boolean => {
+        for (let parent = leaf.parentElement; parent !== null && parent !== slide; parent = parent.parentElement) {
+          if (getComputedStyle(parent).transform !== 'none') return true
+        }
+        return false
+      }
+      /** Layout box before rotation; a rotated leaf's AABB is useless for PPTX placement. */
+      const geometry = (leaf: HTMLElement, slideBox: DOMRect) => {
+        const style = getComputedStyle(leaf)
+        const rotation = parseRotation(style.transform)
+        if (rotation === undefined) return undefined
+        const box = leaf.getBoundingClientRect()
+        if (rotation === 0) {
+          return { rotation, left: box.left - slideBox.left, top: box.top - slideBox.top, right: box.right - slideBox.left, bottom: box.bottom - slideBox.top }
+        }
+        const centerX = (box.left + box.right) / 2 - slideBox.left
+        const centerY = (box.top + box.bottom) / 2 - slideBox.top
+        const width = leaf.offsetWidth
+        const height = leaf.offsetHeight
+        return {
+          rotation,
+          left: centerX - width / 2, top: centerY - height / 2,
+          right: centerX + width / 2, bottom: centerY + height / 2,
+        }
+      }
       slides.forEach((slide, slideIndex) => {
         const slideBox = slide.getBoundingClientRect()
         const leafBoxes: SlideLeafBox[] = []
@@ -229,15 +273,24 @@ export class BrowserRuntime {
           errors.push(`page ${slideIndex + 1}: slide box is ${slideBox.width}x${slideBox.height}, expected 1280x720`)
         }
         for (const leaf of slide.querySelectorAll<HTMLElement>('[data-ppt-id][data-ppt-kind]')) {
-          const box = leaf.getBoundingClientRect()
-          leafBoxes.push({
-            left: box.left - slideBox.left, top: box.top - slideBox.top,
-            right: box.right - slideBox.left, bottom: box.bottom - slideBox.top,
-          })
-          if (box.left < slideBox.left - 1 || box.top < slideBox.top - 1 || box.right > slideBox.right + 1 || box.bottom > slideBox.bottom + 1) {
+          const style = getComputedStyle(leaf)
+          const box = geometry(leaf, slideBox)
+          if (box === undefined) {
+            errors.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} uses an unsupported transform; only pure rotate on a text leaf is allowed`)
+            continue
+          }
+          if (box.rotation !== 0 && (
+            leaf.dataset.pptKind !== 'text' || !originCentered(leaf, style)
+          )) {
+            errors.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} rotation must be a pure rotate on a centered text leaf`)
+          }
+          if (ancestorTransformed(leaf, slide)) {
+            errors.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} has a transformed ancestor; put the rotation on the leaf itself`)
+          }
+          leafBoxes.push({ left: box.left, top: box.top, right: box.right, bottom: box.bottom })
+          if (box.left < -1 || box.top < -1 || box.right > 1280 + 1 || box.bottom > 720 + 1) {
             errors.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} exceeds slide bounds`)
           }
-          const style = getComputedStyle(leaf)
           const family = style.fontFamily.split(',')[0]!.trim().replace(/^['"]|['"]$/g, '')
           if (family.length > 0) {
             usedFonts.add(family)
@@ -246,7 +299,7 @@ export class BrowserRuntime {
           if (leaf.dataset.pptKind === 'text' && (leaf.scrollWidth > leaf.clientWidth + 1 || leaf.scrollHeight > leaf.clientHeight + 1)) {
             errors.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} has text overflow`)
           }
-          if (box.width < 1 || box.height < 1) warnings.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} has near-zero bounds`)
+          if (leaf.offsetWidth < 1 || leaf.offsetHeight < 1) warnings.push(`page ${slideIndex + 1}: ${leaf.dataset.pptId} has near-zero bounds`)
         }
         const anchor = slide.querySelector<HTMLElement>('[data-art-role="visual-anchor"]')?.getBoundingClientRect()
         designPages.push({
@@ -317,16 +370,66 @@ export class BrowserRuntime {
       }
       const pages = [...document.querySelectorAll<HTMLElement>('.ppt-slide[data-page]')]
       if (pages.length !== expected) throw new Error(`expected ${expected} slides, found ${pages.length}`)
+      const parseRotation = (value: string): number | undefined => {
+        if (value === 'none') return 0
+        const match = /^matrix\(([^)]*)\)$/u.exec(value)
+        if (match === null) return undefined
+        const parts = match[1]!.split(',').map(Number)
+        if (parts.length !== 6 || parts.some(part => !Number.isFinite(part))) return undefined
+        const [a, b, c, d, e, f] = parts as [number, number, number, number, number, number]
+        if (Math.abs(e) > 0.001 || Math.abs(f) > 0.001) return undefined
+        if (Math.abs(Math.hypot(a, b) - 1) > 0.001 || Math.abs(a - d) > 0.001 || Math.abs(b + c) > 0.001) return undefined
+        return Math.round(Math.atan2(b, a) * 18000 / Math.PI) / 100
+      }
+      const originCentered = (leaf: HTMLElement, style: CSSStyleDeclaration): boolean => {
+        const parts = style.transformOrigin.split(' ').filter(Boolean)
+        const length = (value: string | undefined, size: number): number => value === undefined ? size / 2
+          : value.endsWith('%') ? Number.parseFloat(value) / 100 * size : Number.parseFloat(value)
+        const x = length(parts[0], leaf.offsetWidth)
+        const y = length(parts[1] ?? '50%', leaf.offsetHeight)
+        return Math.abs(x - leaf.offsetWidth / 2) < 0.5 && Math.abs(y - leaf.offsetHeight / 2) < 0.5
+      }
+      const ancestorTransformed = (leaf: HTMLElement, slide: HTMLElement): boolean => {
+        for (let parent = leaf.parentElement; parent !== null && parent !== slide; parent = parent.parentElement) {
+          if (getComputedStyle(parent).transform !== 'none') return true
+        }
+        return false
+      }
+      const geometry = (leaf: HTMLElement, slideBox: DOMRect) => {
+        const style = getComputedStyle(leaf)
+        const rotation = parseRotation(style.transform)
+        if (rotation === undefined) return undefined
+        const rect = leaf.getBoundingClientRect()
+        if (rotation === 0) {
+          return { rotation, left: rect.left - slideBox.left, top: rect.top - slideBox.top, right: rect.right - slideBox.left, bottom: rect.bottom - slideBox.top }
+        }
+        const centerX = (rect.left + rect.right) / 2 - slideBox.left
+        const centerY = (rect.top + rect.bottom) / 2 - slideBox.top
+        const width = leaf.offsetWidth
+        const height = leaf.offsetHeight
+        return {
+          rotation,
+          left: centerX - width / 2, top: centerY - height / 2,
+          right: centerX + width / 2, bottom: centerY + height / 2,
+        }
+      }
       return pages.map((slide, slideIndex) => {
         const slideBox = slide.getBoundingClientRect()
         const slideStyle = getComputedStyle(slide)
         const elements = [...slide.querySelectorAll<HTMLElement>('[data-ppt-id][data-ppt-kind]')].map((element, domOrder) => {
-          const box = element.getBoundingClientRect()
           const style = getComputedStyle(element)
+          const box = geometry(element, slideBox)
+          if (box === undefined) throw new Error(`${element.dataset.pptId} uses an unsupported transform; only pure rotate on a text leaf is allowed`)
           const kind = element.dataset.pptKind as ElementIR['kind']
+          if (box.rotation !== 0 && (kind !== 'text' || !originCentered(element, style))) {
+            throw new Error(`${element.dataset.pptId} rotation must be a pure rotate on a centered text leaf`)
+          }
+          if (ancestorTransformed(element, slide)) {
+            throw new Error(`${element.dataset.pptId} has a transformed ancestor; put the rotation on the leaf itself`)
+          }
           const item: ElementIR = {
             id: element.dataset.pptId!, kind, z: Number.parseInt(element.dataset.pptZ ?? '0', 10), domOrder,
-            box: { x: box.left - slideBox.left, y: box.top - slideBox.top, w: box.width, h: box.height },
+            box: { x: box.left, y: box.top, w: box.right - box.left, h: box.bottom - box.top },
             style: {
               fontFamily: style.fontFamily.split(',')[0]!.trim().replace(/^['"]|['"]$/g, ''),
               fontSizePx: px(style.fontSize), fontWeight: Number.parseInt(style.fontWeight, 10) || 400,
@@ -337,6 +440,7 @@ export class BrowserRuntime {
               lineHeightPx: style.lineHeight === 'normal' ? px(style.fontSize) * 1.2 : px(style.lineHeight),
               letterSpacingPx: style.letterSpacing === 'normal' ? 0 : px(style.letterSpacing),
               textTransform: style.textTransform,
+              rotationDeg: box.rotation,
               opacity: px(style.opacity, 1), objectFit: style.objectFit, objectPosition: style.objectPosition,
             },
           }

@@ -127,6 +127,32 @@ describe('editable PPTX generation', () => {
     expect(slideXml).toContain('ang="4200000"')
   })
 
+  it('carries a pure text rotation and a low-opacity ghost layer into the PPTX', async () => {
+    const outline = await makeOutline('Poster type deck')
+    const source = `<!doctype html><html><head><style>
+      html,body{margin:0;padding:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter;background:#FFFFFF;color:#111827}
+      .ghost{position:absolute;left:80px;top:60px;width:1000px;height:160px;margin:0;font-size:96px;line-height:1.2;color:#111827;opacity:0.12}
+      .title{position:absolute;left:220px;top:230px;width:600px;height:140px;margin:0;font-size:56px;line-height:1.2;transform:rotate(-7deg)}
+      </style></head><body><section class="ppt-slide" data-page="1">
+      <div class="ghost" data-ppt-id="ghost" data-ppt-kind="text" data-ppt-z="1">GHOST 背景</div>
+      <h1 class="title" data-ppt-id="title" data-ppt-kind="text" data-ppt-z="2">Rotated</h1>
+      </section></body></html>`
+    const created = await createHtmlDeck(browser, owner, workspace.root, outline.outline_path, source)
+    expect(created.preview_paths).toHaveLength(1)
+    const ir = await browser.extractDeckIr(owner, workspace.root, `${outline.artifact_dir}/deck.html`, 1)
+    const ghost = ir.slides[0]?.elements.find(element => element.id === 'ghost')
+    const title = ir.slides[0]?.elements.find(element => element.id === 'title')
+    expect(ghost?.style.opacity).toBeCloseTo(0.12, 2)
+    expect(title?.style.rotationDeg).toBeCloseTo(-7, 2)
+    const result = await createPptx(
+      browser, owner, workspace.root, `${outline.artifact_dir}/deck.html`, outline.outline_path, `${outline.artifact_dir}/deck.pptx`, 'reject',
+    )
+    expect(result).toMatchObject({ page_count: 1, structural_status: 'passed' })
+    const slideXml = strFromU8(unzipSync(new Uint8Array(await readFile(join(workspace.root, result.pptx_path))))['ppt/slides/slide1.xml']!)
+    expect(slideXml).toContain('<a:xfrm rot="-420000">')
+    expect(slideXml).toContain('<a:alpha val="12000"/>')
+  })
+
   it('rejects unsupported leaves by default and rasterizes only the authorized element', async () => {
     const outline = await makeOutline('Fallback deck')
     const source = `<!doctype html><html><head><style>html,body{margin:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter}.complex{position:absolute;left:100px;top:100px;width:240px;height:180px}</style></head><body>

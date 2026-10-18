@@ -660,7 +660,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     },
     poster_moves: [
       'Poster A — split headline: 72px two-line title with the second line indented 96px, plus a 200px index numeral at 6% ink in the outer margin.',
-      'Poster B — vertical margin: one keyword set one character per line in a 1em-wide box against the 1px margin rule.',
+      'Poster B — vertical margin: one keyword set one character per line in a 1em-wide box against the 1px margin rule; rotate the coordinate label 5°.',
       'Poster C — metric poster: a 240px number in the latin face with a 32px caption; the title drops to 44px.',
     ],
     signature: 'A 1px blueprint margin that only appears in the outer 72px of the page.',
@@ -724,7 +724,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     poster_moves: [
       'Poster A — ledger cover: 72px title left, the quarter number at 160px right, and the 2px brass rule at least 32px below the lowest text, never across it.',
       'Poster B — stacked figures: three 96px numbers in a vertical column, each with a 16px label; the title at 44px.',
-      'Poster C — ghost verdict: the one-word verdict at 180px in brass at 12% behind a 72px title, offset 24px.',
+      'Poster C — ghost verdict: “LEDGER / 账本” at 120px and 10% ink behind a 72px title, with the Q3 label rotated −5°.',
     ],
     signature: 'A brass rule under the deck title and nowhere else.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'process', 'layered', 'closing'],
@@ -787,7 +787,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     poster_moves: [
       'Poster A — aurora word: one 200px word over the gradient, with the 72px ask below and no other ornament.',
       'Poster B — valuation poster: a 240px figure on the right, a 44px title on the left, one hairline between.',
-      'Poster C — ghost conviction: the same word at 160px in #16375F offset 20px behind the 72px title.',
+      'Poster C — ghost conviction: “RAISE / 融资” at 120px and 10% white behind the 72px title; rotate the eyebrow 6°.',
     ],
     signature: 'A single aurora gradient field on the cover and closing only.',
     composition_cycle: ['hero', 'quote', 'full-bleed', 'editorial-split', 'data-focus', 'closing'],
@@ -858,7 +858,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     },
     poster_moves: [
       'Poster A — vertical Song: the title set one character per line down the left margin at 96px, the crimson bar beside it.',
-      'Poster B — opening quote: a 320px serif quotation mark at 10% ink behind a 64px title.',
+      'Poster B — opening quote: a 320px serif quotation mark at 10% ink behind a 64px title, plus a vertical ghost “PAPER” at 8%.',
       'Poster C — paper block: a 72px title overlapping a 40%-width surface block, with the block lower half visible.',
     ],
     signature: 'A warm paper gradient that reads as uncoated stock, never as a tech gradient.',
@@ -1064,7 +1064,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       measure: '36-44 CJK characters per line; the page should read as one column',
     },
     poster_moves: [
-      'Poster A — graphite numeral: a 280px numeral at 6% ink behind a 72px title, offset 24px.',
+      'Poster A — graphite numeral: a 280px numeral at 6% ink behind a 72px title, with bilingual ghost “GRAPHITE / 石墨” at 8%.',
       'Poster B — single word: a 160px display word with 0.2em tracking and one 2px vermilion rule below it.',
       'Poster C — hanging indent: a 72px title across two lines with the second line indented 160px.',
     ],
@@ -1271,7 +1271,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       measure: '28-36 CJK characters per line; one proposition per page',
     },
     poster_moves: [
-      'Poster A — one word: the proposition at 200px with the 6px crimson bar, and no body copy on the page.',
+      'Poster A — one word: the proposition at 200px with the 6px crimson bar, no body copy, and the deadline label rotated −5°.',
       'Poster B — huge number: a 240px figure with the 44px ask below and the 16px deadline at the bottom.',
       'Poster C — type over block: a 72px title overlapping a 45%-width rose block, text above the block.',
     ],
@@ -1417,7 +1417,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
     poster_moves: [
       'Poster A — annual poster: a 240px year numeral at 5% ink, a 72px title offset 48px.',
       'Poster B — vertical year: 2026 set one digit per line in a 1em column, the 72px title to its right.',
-      'Poster C — ghost growth: a 160px word in #D3DDC5 behind the 64px title.',
+      'Poster C — ghost growth: bilingual ghost “ANNUAL / 年报” at 120px and 8% ink behind the 64px title.',
     ],
     signature: 'A 240px year numeral watermark on the cover, set in the latin face at 4% ink.',
     composition_cycle: ['hero', 'data-focus', 'editorial-split', 'layered', 'process', 'closing'],

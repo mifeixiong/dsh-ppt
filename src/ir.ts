@@ -34,6 +34,8 @@ export interface ElementStyleIR {
   letterSpacingPx: number
   /** Computed text-transform; `uppercase` labels are exported as uppercase text. */
   textTransform: string
+  /** Pure CSS rotation in degrees, clockwise; 0 for every unrotated leaf. */
+  rotationDeg: number
   opacity: number
   objectFit: string
   objectPosition: string

@@ -70,7 +70,7 @@ describe('constrained HTML contract', () => {
       html('<section class="ppt-slide" data-page="1"><img data-ppt-id="i" data-ppt-kind="image" src="https://example.com/a.png"></section>'),
       html('<section class="ppt-slide" data-page="1"><img data-ppt-id="i" data-ppt-kind="image" src="assets/missing.png"></section>'),
       html('<section class="ppt-slide" data-page="1"><h1 data-ppt-id="t" data-ppt-kind="text">T</h1></section>', '.ppt-slide{font-family:Papyrus}'),
-      html('<section class="ppt-slide" data-page="1"><h1 data-ppt-id="t" data-ppt-kind="text">T</h1></section>', '#t{transform:scale(2)}'),
+      html('<section class="ppt-slide" data-page="1"><h1 data-ppt-id="t" data-ppt-kind="text">T</h1></section>', '#t{filter:blur(2px)}'),
     ]) {
       const workspace = await createTestWorkspace()
       try {

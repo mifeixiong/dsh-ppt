@@ -298,7 +298,9 @@ To follow a client brand instead, read its public style guide with `browser_visi
 - Gradients are scarce: use only the one `ppt_themes` returns for that page, only on cover, section, quote or ending pages, at most two pages per deck, and always with a solid `background-color` fallback equal to the first stop
 - The page ground lives on `.ppt-slide`; solid colours and native linear gradients both enter the PPTX. Never fake a ground with a full-bleed `shape`
 - Rules (1px / 2px) keep 24px clear of any text baseline and never run through a title or subtitle
-- `box-shadow`, `transform`, `filter`, `clip-path` and `content` are rejected outright, so depth comes from borders and tonal steps and the HTML preview cannot diverge from the PPTX
+- Text rotation is limited to a pure `rotate` (±8°, centered origin, no scale/skew/translate), used only on short labels or single words, at most twice per deck; it enters the PPTX as a native shape rotation, so preview and deck agree
+- Low-opacity ghost text (0.06–0.18) is allowed as a background layer — real editable text, z-index below the headline, at most one bilingual ghost pair per page
+- `box-shadow`, `filter`, `clip-path` and `content` are rejected outright, so depth comes from borders and tonal steps and the HTML preview cannot diverge from the PPTX
 
 ## Motion and fonts
 

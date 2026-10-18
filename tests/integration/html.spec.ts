@@ -68,6 +68,34 @@ describe('HTML browser preview and layout validation', () => {
       .rejects.toMatchObject({ code: 'HTML_CREATE_VALIDATION_FAILED' })
   })
 
+  it('allows a pure text rotation but rejects scale, skew, off-center origins and transformed ancestors', async () => {
+    const rotated = await createHtmlDeck(browser, owner, workspace.root, outlinePath, deckHtml('.title{transform:rotate(-6deg)}'))
+    expect(rotated.preview_paths).toHaveLength(1)
+    for (const css of [
+      '.title{transform:scale(1.2)}',
+      '.title{transform:skewX(8deg)}',
+      '.title{transform:rotate(-6deg);transform-origin:0 0}',
+    ]) {
+      await expect(createHtmlDeck(browser, owner, workspace.root, outlinePath, deckHtml(css)))
+        .rejects.toMatchObject({ code: 'HTML_CREATE_VALIDATION_FAILED' })
+    }
+    const wrapped = `<!doctype html><html><head><style>
+      html,body{margin:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter;background:#fff;color:#111}
+      .wrap{position:absolute;left:80px;top:70px;width:1120px;height:90px;transform:rotate(2deg)}
+      .title{margin:0;width:1120px;height:90px;font-size:52px;line-height:1.1}</style></head><body>
+      <section class="ppt-slide" data-page="1"><div class="wrap"><h1 class="title" data-ppt-id="title" data-ppt-kind="text">Wrapped</h1></div></section>
+      </body></html>`
+    await expect(createHtmlDeck(browser, owner, workspace.root, outlinePath, wrapped))
+      .rejects.toMatchObject({ code: 'HTML_CREATE_VALIDATION_FAILED' })
+    const rotatedShape = `<!doctype html><html><head><style>
+      html,body{margin:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter;background:#fff;color:#111}
+      .rule{position:absolute;left:100px;top:100px;width:600px;height:2px;background:#111;transform:rotate(-6deg)}</style></head><body>
+      <section class="ppt-slide" data-page="1"><div class="rule" data-ppt-id="rule" data-ppt-kind="shape"></div></section>
+      </body></html>`
+    await expect(createHtmlDeck(browser, owner, workspace.root, outlinePath, rotatedShape))
+      .rejects.toMatchObject({ code: 'HTML_CREATE_VALIDATION_FAILED' })
+  })
+
   it('renders a directed deck and persists browser-backed design fidelity evidence', async () => {
     const directedOutline = await writePptOutline(workspace.root, 'Directed HTML Preview', [{
       page: 1, type: 'content', title: 'Directed HTML', content: [{ kind: 'point', text: 'A deliberate visual anchor.' }],

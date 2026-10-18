@@ -15,6 +15,7 @@ import { validateDeckHtmlSource } from './html.ts'
 import { rewritePptxTransitions, type SlideTransitionPlan } from './transitions.ts'
 import { rewritePptxAnimations, type AnimationPlan } from './animation.ts'
 import { planSlideBackground, rewritePptxSlideBackgrounds, type SlideBackgroundPlan } from './slide-background.ts'
+import { rewritePptxTextOpacity, type TextOpacityEntry } from './text-effects.ts'
 
 export type PptFallbackMode = 'reject' | 'rasterize-element'
 
@@ -67,10 +68,10 @@ function textOptions(style: ElementStyleIR) {
     margin: 0, breakLine: false, fit: 'none' as const, align,
     valign: style.verticalAlign === 'bottom' ? 'bottom' : style.verticalAlign === 'middle' ? 'mid' : 'top',
     lineSpacing: pxToPoints(style.lineHeightPx),
-    // Wide-tracked labels are a theme signature; without this the PPTX loses
-    // the tracking the HTML preview was designed around. Display tracking is
-    // often negative, so carry both directions.
+    // Display tracking is often negative, so carry both directions.
     ...(style.letterSpacingPx !== 0 ? { charSpacing: pxToPoints(style.letterSpacingPx) } : {}),
+    // A pure CSS rotate on a text leaf becomes a native shape rotation.
+    ...(style.rotationDeg === 0 ? {} : { rotate: style.rotationDeg }),
     ...(fill === undefined ? {} : { fill: { color: fill.hex, transparency: fill.transparency } }),
     ...(style.borderStyle === 'none' || style.borderWidthPx <= 0 || line === undefined
       ? { line: { type: 'none' as const } }
@@ -282,6 +283,15 @@ export async function createPptx(
   for (const [page, plan] of backgroundPlans) {
     if (plan.gradient !== undefined) gradientPlans.set(page, plan)
   }
+  // Low-opacity layers are text, not shapes, so they need run-level alpha in the
+  // finished package; pptxgenjs has no text transparency option.
+  const opacityPlans = new Map<number, TextOpacityEntry[]>()
+  for (const slide of ir.slides) {
+    const entries: TextOpacityEntry[] = slide.elements
+      .filter(element => element.kind === 'text' && element.style.opacity < 0.999)
+      .map(element => ({ id: element.id, opacity: element.style.opacity }))
+    if (entries.length > 0) opacityPlans.set(slide.page, entries)
+  }
 
   const pptx = new PptxGenJS()
   pptx.defineLayout({ name: 'DSH_PPT_16_9', width: SLIDE_WIDTH_IN, height: SLIDE_HEIGHT_IN })
@@ -312,6 +322,7 @@ export async function createPptx(
     // byte-comparable with its source.
     let bytes: Uint8Array = written
     bytes = rewritePptxSlideBackgrounds(bytes, gradientPlans)
+    bytes = rewritePptxTextOpacity(bytes, opacityPlans)
     if (transitions !== undefined) bytes = rewritePptxTransitions(bytes, transitions)
     if (animations !== undefined) bytes = rewritePptxAnimations(bytes, animations)
     inspectPptxPackage(bytes, outline.length)

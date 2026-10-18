@@ -304,7 +304,9 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 - 渐变是稀缺资源：只允许用 `ppt_themes` 为当前页返回的那一条，只出现在封面/章节/引用/结束页，每套 deck 最多 2 页，并且必须同时写与首个色标一致的 `background-color` 降级
 - 页面底色写在 `.ppt-slide` 上，纯色与原生线性渐变都会进入 PPTX；不要用铺满整页的 `shape` 伪装底色
 - 规则线（1px / 2px）与任何文字基线至少留 24px，永远不要穿过标题或副标题
-- 投影（`box-shadow`）、`transform`、`filter`、`clip-path`、`content` 一律禁止——立体感只能靠边框与色阶，这样 HTML 预览与 PPTX 产物才不会出现保真断层
+- 文字旋转只允许纯 `rotate`（±8°、原点居中、不能缩放/斜切/平移），只用在短标签或单词上，整套 deck ≤ 2 处；它会以原生旋转进入 PPTX，预览与产物一致
+- 允许 0.06–0.18 的低透明度中英文叠字作为背景层（真实文本、z-index 低于标题、每页最多一组），PPTX 中保留为可编辑文字
+- 投影（`box-shadow`）、`filter`、`clip-path`、`content` 一律禁止——立体感靠边框与色阶，这样 HTML 预览与 PPTX 产物才不会出现保真断层
 
 ## 放映动效与字体
 

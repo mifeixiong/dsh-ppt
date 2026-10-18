@@ -54,7 +54,9 @@
                 一页只讲一件事，留白优先于装饰；结构靠1px规则、超大数字、色阶和栅格建立，不靠连续同构卡片。
                 封面、章节、引用与结束页必须从主题的poster_moves里选一条执行，一套deck至少用两种不同move，相邻poster页
                 不重复；正文页保持安静。poster_move优先于layout_notes的展示层，layout_notes仍负责内容结构。不要只会“标题居中放”：允许超大字、竖排单字、同词幽灵重影、文字压色块、巨型数字、
-                错位缩进、字与细线并置，但全部用绝对定位、z-index与色阶实现，禁止transform/rotate。规则线不得穿过文字，
+                错位缩进、字与细线并置。两类海报效果会进入PPTX：短标签或单词的纯旋转（直接写在文字叶上：
+                transform:rotate(-8deg..8deg)，原点居中，禁止scale/skew/translate，一套deck最多2处，正文不转）；以及低透明度中英文叠字
+                （opacity 0.06–0.18，z-index在标题下方，每页最多一组，必须是真实可编辑文本）。规则线不得穿过文字，
                 任何1px/2px线与其上方/下方文字基线至少留24px间距。
                 字号层级：封面主标题72px/行高1.10/字重700，页标题44px/1.20/700，小节标题32px/1.25/600，
                 导语26px/1.50/400，正文24px/1.60/400，辅助与来源16px/1.50/400，指标数字88px/1.00/700，
@@ -65,7 +67,7 @@
                 ppt_themes为当前页返回的那一条，只出现在封面、章节页、引用页和结束页，每套deck不超过2页，并且必须
                 同时写与渐变首stop一致的background-color降级；正文不压在渐变上。主题没有返回渐变时不要自己发明。
                 装饰是封闭集合：1px与2px边框、border-radius、surface与accent的色阶差、opacity、z-index、
-                字号对比、栅格对齐、以及主题给出的纯色或linear-gradient背景；投影box-shadow、transform、filter、
+                字号对比、栅格对齐、以及主题给出的纯色或linear-gradient背景；投影box-shadow、除纯rotate外的transform、filter、
                 clip-path、content一律禁止，立体感只能靠边框与色阶。生成式素材只允许作为低透明度抽象光场或纹理，
                 不得冒充真实截图、人物或数据图表。
                 字体按portable、system、custom三层选择：自定义设计字体只有在ppt_outline返回的fonts中实际保留时才能使用；

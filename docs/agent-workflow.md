@@ -116,6 +116,8 @@ ppt-output/_staging/<topic>/
 
 先用 `ppt_themes` 定主题再排页，比从零设计省事得多：传 `theme_id` 与 `page_types` 会直接返回逐页的 `composition` / `density` / `background_role` / `title_treatment` / `frame_policy`、该页应使用的具体色值（含反色页要换用的 `accent_inverted`）、主题允许时的那一条渐变（`gradient.css` + `fallback` + 页数限制），以及海报页的 `poster_move`。主题仍是起点：`concept`、`audience_effect` 与每页 `job`、`takeaway` 必须按实际内容自己写；`signature`、`poster_moves`、`type_treatment`、`avoid`、`image_treatment` 是这套主题的设计纪律，照做。海报页至少用两种不同 move，正文页保持安静，规则线与文字基线保持 24px 以上间距。页面底色写在 `.ppt-slide` 上（纯色或主题渐变），会导出为 PPTX 原生底色，不要用铺满整页的 shape 伪装。需要品牌色时，用 `browser_visit` 读公开品牌规范取色，并按同一纪律自建（正文与强调色对每一层底色与渐变 stop 都 ≥4.5:1，深色页准备独立的反色强调色）。
 
+两类海报效果会原样进入 PPTX，可放心使用：短标签/单词的纯旋转（`transform:rotate(-8deg..8deg)`，原点居中，禁止 scale/skew/translate，每套 deck ≤2 处，正文不转）；低透明度中英文叠字（`opacity:0.06–0.18`，z-index 低于标题，每页最多一组，必须是真实文本）。两者都经过浏览器与 PPTX 双向验证，不再被 HTML 白名单拒绝。
+
 另外三条会直接触发校验失败或告警的硬约束，框架 agent 交稿前自查：
 
 1. `art_direction.slides` 的页数必须等于大纲页数，`page` 必须从 1 连续递增。
