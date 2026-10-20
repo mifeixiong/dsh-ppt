@@ -51,6 +51,11 @@ describe('HTML browser preview and layout validation', () => {
     expect(result).toMatchObject({ page_count: 1, external_resources: 'none', fonts: ['Liter'] })
     expect(result.preview_paths).toHaveLength(1)
     expect(await readFile(`${workspace.root}/${result.html_path}`, 'utf8')).toContain('data-ppt-id="title"')
+    // The Refactoring UI audit runs in legacy mode too; raw browser samples never persist.
+    const evidence = JSON.parse(await readFile(`${workspace.root}/${result.design_validation_path}`, 'utf8'))
+    expect(evidence.mode).toBe('legacy')
+    expect(evidence.checks).toContain('refactoring-ui-laws')
+    expect(evidence.pages.every((page: Record<string, unknown>) => !('sample' in page))).toBe(true)
   })
 
   it('replaces deck.html on a repeated call instead of refusing', async () => {
@@ -113,5 +118,64 @@ describe('HTML browser preview and layout validation', () => {
     expect(result).toMatchObject({ design_status: 'directed', design_findings: [] })
     const evidence = JSON.parse(await readFile(`${workspace.root}/${result.design_validation_path}`, 'utf8'))
     expect(evidence).toMatchObject({ mode: 'directed', pages: [{ page: 1, frameCount: 0 }] })
+  })
+
+  it('flags low-contrast body text and records the Refactoring UI check in directed mode', async () => {
+    const contrastOutline = await writePptOutline(workspace.root, 'Contrast HTML Preview', [{
+      page: 1, type: 'content', title: 'Contrast HTML', content: [{ kind: 'point', text: 'Low-contrast supporting copy.' }],
+      style: { layout: 'title-content', background: 'light', accent: '#2563EB', title_font: 'Liter', body_font: 'Liter', visual_direction: 'Editorial hero' },
+    }], 'ppt-output', undefined, MINIMAL_ART_DIRECTION)
+    // White field, mid-grey 20px body copy: 3.45:1, under the 4.5:1 normal-text floor.
+    const lowContrast = `<!doctype html><html><head><style>
+      html,body{margin:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter;background:#FFFFFF;color:#111318}
+      .anchor{position:absolute;left:80px;top:120px;width:720px;height:280px;font-size:56px;line-height:1.1}
+      .body{position:absolute;left:80px;top:480px;width:720px;height:80px;font-size:20px;line-height:1.4;color:#8A8A8A}
+      .faint{position:absolute;left:80px;top:580px;width:720px;height:40px;font-size:20px;line-height:1.4;color:#111318;opacity:0.45}
+    </style></head><body><section class="ppt-slide" data-page="1" data-art-composition="hero" data-art-density="low" data-art-background="base">
+      <h1 class="anchor" data-ppt-id="anchor" data-ppt-kind="text" data-art-role="visual-anchor">A deliberate visual anchor.</h1>
+      <p class="body" data-ppt-id="body" data-ppt-kind="text" data-art-role="body">Supporting copy that sits too close in tone to the page.</p>
+      <p class="faint" data-ppt-id="faint" data-ppt-kind="text" data-art-role="body">A dimmed line that only reads at 45% opacity.</p>
+    </section></body></html>`
+    const result = await createHtmlDeck(
+      browser, owner, workspace.root, contrastOutline.outline_path, lowContrast, undefined, contrastOutline.design_plan_path,
+    )
+    expect(result.design_status).toBe('directed')
+    const contrast = result.design_findings.find(finding => finding.code === 'RUI_CONTRAST_LOW')
+    expect(contrast?.page).toBe(1)
+    expect(contrast?.message).toContain('body contrast')
+    // Contrast is measured on the composited colour: an opacity-dimmed page text
+    // is listed too, not just one that declares a pale colour.
+    expect(contrast?.message).toContain('faint')
+    const evidence = JSON.parse(await readFile(`${workspace.root}/${result.design_validation_path}`, 'utf8'))
+    expect(evidence.mode).toBe('directed')
+    expect(evidence.checks).toContain('refactoring-ui-laws')
+    expect(evidence.findings).toContainEqual(expect.objectContaining({ code: 'RUI_CONTRAST_LOW', page: 1 }))
+    expect(evidence.pages[0]).not.toHaveProperty('sample')
+  })
+
+  it('escalates Refactoring UI warnings under strict_design even without a design plan', async () => {
+    const error = await createHtmlDeck(
+      browser, owner, workspace.root, outlinePath,
+      deckHtml('.body{color:#8A8A8A;font-size:20px}'),
+      undefined, undefined, true,
+    ).then(
+      () => { throw new Error('expected strict design validation to fail') },
+      (thrown: unknown) => thrown as { code?: string; details?: { issues?: Array<{ code?: string }> } },
+    )
+    expect(error.code).toBe('HTML_CREATE_VALIDATION_FAILED')
+    expect(error.details?.issues?.some(issue => issue.code === 'RUI_CONTRAST_LOW')).toBe(true)
+  })
+
+  it('counts one visual line once when a smaller inline run shares it', async () => {
+    // A 12px run inside a 24px line must not be read as a second line: that
+    // misread would trip the multi-line rules on perfectly ordinary copy.
+    const mixed = `<!doctype html><html><head><style>
+      html,body{margin:0}.ppt-slide{width:1280px;height:720px;position:relative;overflow:hidden;font-family:Liter;background:#FFFFFF;color:#111318}
+      .body{position:absolute;left:80px;top:120px;width:900px;height:60px;margin:0;font-size:24px;line-height:1.25}
+    </style></head><body><section class="ppt-slide" data-page="1">
+      <p class="body" data-ppt-id="body" data-ppt-kind="text" data-art-role="body">Revenue grew <span style="font-size:12px">year on year</span> in every region we serve.</p>
+    </section></body></html>`
+    const result = await createHtmlDeck(browser, owner, workspace.root, outlinePath, mixed)
+    expect(result.design_findings).toEqual([])
   })
 })

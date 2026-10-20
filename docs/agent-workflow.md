@@ -116,6 +116,8 @@ ppt-output/_staging/<topic>/
 
 先用 `ppt_themes` 定主题再排页，比从零设计省事得多：传 `theme_id` 与 `page_types` 会直接返回逐页的 `composition` / `density` / `background_role` / `title_treatment` / `frame_policy`、该页应使用的具体色值（含反色页要换用的 `accent_inverted`）、主题允许时的那一条渐变（`gradient.css` + `fallback` + 页数限制），以及海报页的 `poster_move`。主题仍是起点：`concept`、`audience_effect` 与每页 `job`、`takeaway` 必须按实际内容自己写；`signature`、`poster_moves`、`type_treatment`、`avoid`、`image_treatment` 是这套主题的设计纪律，照做。海报页至少用两种不同 move，正文页保持安静，规则线与文字基线保持 24px 以上间距。页面底色写在 `.ppt-slide` 上（纯色或主题渐变），会导出为 PPTX 原生底色，不要用铺满整页的 shape 伪装。需要品牌色时，用 `browser_visit` 读公开品牌规范取色，并按同一纪律自建（正文与强调色对每一层底色与渐变 stop 都 ≥4.5:1，深色页准备独立的反色强调色）。
 
+设计还要遵守 [设计法则层](design-rules.md) 的九条可机器校验法则：一页最多三种文字色，层级用字重、字号与颜色建立而不是加装饰；彩色底上不用灰字，也不用白色降透明度；正文每行落在 45–75 个拉丁字符（约 20–35 个中文字符）的读长里；多行正文行高 ≥1.3×；一页最多六种字号、两种字族；全大写标签（≤20px）带 ≥0.02em 字距；≤26px 的文字字重不低于 400。`html_create` 回渲后会逐页返回 `RUI_*` design findings，处理方式和 `ART_*` 一致：在 `ppt_create` 之前清掉；`strict_design=true` 时这些告警直接变成校验失败。
+
 两类海报效果会原样进入 PPTX，可放心使用：短标签/单词的纯旋转（`transform:rotate(-8deg..8deg)`，原点居中，禁止 scale/skew/translate，每套 deck ≤2 处，正文不转）；低透明度中英文叠字（`opacity:0.06–0.18`，z-index 低于标题，每页最多一组，必须是真实文本）。两者都经过浏览器与 PPTX 双向验证，不再被 HTML 白名单拒绝。
 
 装饰库也已扩展：`ppt_themes(theme_id, motif_id=...)` 返回同心圆、半调波点、HUD 线条、刻度圆、条形码、波浪纹理、重复线条、点阵、多边形网格、等高线、常见图形、嵌套多边形、经纬球、方形网格、射线的自包含 SVG（base / inverse 两版）。每页最多一个 motif，放在角落/边缘/背景层，不压正文，一套 deck 2–3 页即可；直接用返回的 SVG，不要手写复杂图形。
@@ -267,7 +269,7 @@ Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(...,
 4. 框架 agent 交 `frame/outline-payload.json` + `frame/art-direction.json`；主 agent 检查 8 个逐页字段是否齐全、页数与 `background_sequence` 是否对齐。
 5. `ppt_fonts` 复核字体可用性 → `ppt_outline` 落盘，记下返回的 `artifact_dir`、`outline_path`、`design_plan_path`、`design_status`、`fonts`；`blocking_warnings` 非空就地返工。
 6. 冻结素材到 `<root>/assets/images/`，写 `assets/source-manifest.json`（图源不可用就跳去零外链矢量方案）。
-7. 写 HTML（逐页声明与 Art Direction 一致的构图、密度、背景；关键元素带上角色标记）→ `html_create`，带上 `design_plan_path`。
+7. 写 HTML（逐页声明与 Art Direction 一致的构图、密度、背景；关键元素带上角色标记）→ `html_create`，带上 `design_plan_path`；逐条读完返回的 `ART_*` / `RUI_*` design findings（设计法则见 [设计法则层](design-rules.md)），`ppt_create` 之前清掉。
 8. `ppt_create` 出 `deck.pptx`。
 9. `ppt_image(backend=auto, refresh_quality=true)`。
 10. `read_image` 看完全部联系表 + 封面/目录/数据页/复杂对比页/结束页 + 全部高风险页。
@@ -282,6 +284,7 @@ Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(...,
 - 工具白名单：`src/schemas.ts` 的 `PPT_MODE_TOOL_NAMES`（本机 shell 项随平台在 `pwsh` / `bash` 之间切换）。
 - 工件目录与来源记账结构：`src/artifacts.ts`。
 - Art Direction 的字段与强校验：`src/art-direction.ts`。
+- 设计法则、阈值与审稿探针：`src/design-rules.ts`（说明见 [设计法则层](design-rules.md)）。
 - 四层状态与审稿文件契约：`src/quality.ts`。
 - 回渲与联系表：`src/ppt-image.ts`。
 

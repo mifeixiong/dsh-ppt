@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join } from 'node:path'
 import { atomicWriteJson, atomicWriteText } from './atomic.ts'
 import { ART_ROLES, artDirectionFindings, type ArtDirection, type DesignFinding, validateArtDirection } from './art-direction.ts'
 import type { BrowserRuntime } from './browser.ts'
+import { designRuleFindings } from './design-rules.ts'
 import { describeIssues, PptError, throwIfAborted } from './errors.ts'
 import { discoverRegisteredFonts, FONT_REGISTRY } from './fonts.ts'
 import { validatePptOutline } from './outline.ts'
@@ -229,6 +230,10 @@ export async function createHtmlDeck(
     const rendered = await browser.renderHtmlPreview(
       owner, workspace, temporary, previewDirectory, outline.length, FONT_REGISTRY.map(font => font.name), signal,
     )
+    // The rendered measurements feed the Refactoring UI audit in every mode:
+    // design laws apply to legacy decks too, only the Art Direction evidence is
+    // directed-only. The pure rules live in `design-rules.ts`.
+    validation.designFindings.push(...designRuleFindings(rendered.designPages.map(page => page.sample)))
     if (designPlan !== undefined) {
       for (const page of rendered.designPages) {
         const planned = designPlan.slides[page.page - 1]!
@@ -271,19 +276,27 @@ export async function createHtmlDeck(
           }
         }
       }
-      if (strictDesign && validation.designFindings.some(finding => finding.severity === 'warning')) {
-        throw new PptError('HTML_CREATE_VALIDATION_FAILED', 'HTML design fidelity validation failed in strict mode', {
-          details: { issues: validation.designFindings.map(finding => ({ code: finding.code, page: finding.page, message: finding.message })) },
-        })
-      }
+    }
+    // strict_design promotes every deterministic design warning to a failure,
+    // including the Refactoring UI findings: those apply to legacy decks too,
+    // so the escalation lives outside the Art Direction block.
+    if (strictDesign && validation.designFindings.some(finding => finding.severity === 'warning')) {
+      throw new PptError('HTML_CREATE_VALIDATION_FAILED', 'HTML design fidelity validation failed in strict mode', {
+        details: { issues: validation.designFindings.map(finding => ({ code: finding.code, page: finding.page, message: finding.message })) },
+      })
     }
     await atomicWriteText(output, html, { signal, overwrite: true })
     const designValidation = join(artifactRoot, 'design-validation.json')
     await atomicWriteJson(designValidation, {
       version: 1,
       mode: designPlan === undefined ? 'legacy' : 'directed',
-      checks: designPlan === undefined ? [] : ['html-art-attributes', 'art-roles', 'visual-anchor-area', 'frame-policy', 'occupancy-silhouette', 'font-declarations', 'computed-typography-roles'],
-      pages: rendered.designPages,
+      checks: [
+        ...(designPlan === undefined ? [] : ['html-art-attributes', 'art-roles', 'visual-anchor-area', 'frame-policy', 'occupancy-silhouette', 'font-declarations', 'computed-typography-roles']),
+        'refactoring-ui-laws',
+      ],
+      // Browser samples are internal evidence: persisting them would bloat the
+      // artifact and churn on every reflow, so only the measured summary lands.
+      pages: rendered.designPages.map(({ sample: _sample, ...evidence }) => evidence),
       findings: validation.designFindings,
     }, { signal, overwrite: true })
     return {

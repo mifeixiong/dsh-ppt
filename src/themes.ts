@@ -688,7 +688,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Eyebrow: 16px, letter-spacing 0.16em, uppercase, #0B57D0, preceded by a 24x1px accent dash.',
       'Nodes: 32px circles with a 1px accent border and a 16px numeral; connector lines are 1px #D6E4F5 only.',
       'Cards: surface fill, no border, 8px radius, 28px padding; separate cards with 24px gaps, never with shadows.',
-      'Page index bottom-right at 14px #6B7A8C; the deck title sits bottom-left at 14px.',
+      'Page index bottom-right at 14px #606E7E; the deck title sits bottom-left at 14px.',
     ],
     avoid: [
       'No isometric illustrations, gradient meshes or 3D icons.',
@@ -889,7 +889,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Dividers: 1px #E3D9C8 hairlines with 24px margins; never boxed sections.',
       'Serif display and body: SimSun 700/400; Latin and figures in Times New Roman.',
       'Section numbers: 64px serif numerals in #A3164B at 30% opacity in the top-right.',
-      'Footnotes: 14px Times New Roman in #7A6A58 with a 1px rule above.',
+      'Footnotes: 14px Times New Roman in #756654 with a 1px rule above.',
     ],
     avoid: [
       'No sans-serif display; this theme must stay serif.',
@@ -1099,7 +1099,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Vermilion signal: exactly one #A83A10 rule or numeral per page, never both.',
       'Watermark: a 240px grey numeral at 4% behind the top-right corner of hero pages.',
       'Grid: 1px #E6E4E0 column guides on hero and layered pages only.',
-      'Page number at 12px #8A8783 bottom-right; section label at 12px in tracking bottom-left.',
+      'Page number at 12px #6C6A67 bottom-right; section label at 12px in tracking bottom-left.',
     ],
     avoid: [
       'No shadows, gradients or coloured icons.',
@@ -1454,7 +1454,7 @@ export const PPT_THEMES: readonly PptTheme[] = [
       'Year watermark: a 240px latin numeral at 4% ink on the cover; no other oversized type.',
       'Long-horizon charts: 1px #D3DDC5 grid rules, one accent line, no fills except a 12% accent band.',
       'Data cards: #E8EEDB fill, 1px #D3DDC5 border, 8px radius; figures in #3F6B2E.',
-      'Page number bottom-right at 12px in #6C7A5F; reporting period bottom-left at 12px.',
+      'Page number bottom-right at 12px in #616E56; reporting period bottom-left at 12px.',
       'Section labels at 16px in accent, set on one line.',
     ],
     avoid: [

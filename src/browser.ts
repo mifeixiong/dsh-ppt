@@ -11,6 +11,7 @@ import { isLocalFilesystemPath, isPathInside, resolveWorkspacePath, workspaceRel
 import type { SessionOwner } from './session-resources.ts'
 import { SessionResourceRegistry } from './session-resources.ts'
 import type { DeckIR, ElementIR } from './ir.ts'
+import type { DesignPageSample, DesignTextSample } from './design-rules.ts'
 
 export interface BrowserElementRef {
   ref: string
@@ -39,6 +40,8 @@ export interface HtmlPreviewResult {
     frameCount: number
     occupancy: number[]
     roleStyles: Array<{ role: string; fontFamily: string; fontWeight: number }>
+    /** Rendered text measurements for the pure Refactoring UI audit in `design-rules.ts`. */
+    sample: DesignPageSample
   }>
 }
 
@@ -221,7 +224,14 @@ export class BrowserRuntime {
       const warnings: string[] = []
       const usedFonts = new Set<string>()
       if (slides.length !== count) errors.push(`expected ${count} slides but found ${slides.length}`)
-      const designPages: Array<{ page: number; anchorAreaRatio?: number; frameCount: number; leafBoxes: SlideLeafBox[]; roleStyles: Array<{ role: string; fontFamily: string; fontWeight: number }> }> = []
+      const designPages: Array<{
+        page: number
+        anchorAreaRatio?: number
+        frameCount: number
+        leafBoxes: SlideLeafBox[]
+        roleStyles: Array<{ role: string; fontFamily: string; fontWeight: number }>
+        sample: DesignPageSample
+      }> = []
       const parseRotation = (value: string): number | undefined => {
         if (value === 'none') return 0
         const match = /^matrix\(([^)]*)\)$/u.exec(value)
@@ -266,6 +276,130 @@ export class BrowserRuntime {
           right: centerX + width / 2, bottom: centerY + height / 2,
         }
       }
+      /** A computed colour with its alpha, before it is composited onto a field. */
+      type MeasuredColor = { r: number; g: number; b: number; a: number }
+
+      /** Computed `rgb()`/`rgba()` as channels; other colour spaces are left unaudited. */
+      const measureColor = (value: string): MeasuredColor | undefined => {
+        const match = /^rgba?\(([^)]*)\)$/u.exec(value)
+        if (match === null) return undefined
+        const parts = match[1]!.trim().split(/[\s,]+/u).map(part => Number.parseFloat(part))
+        const r = parts[0]
+        const g = parts[1]
+        const b = parts[2]
+        const a = parts[3] ?? 1
+        if (r === undefined || g === undefined || b === undefined) return undefined
+        if (![r, g, b, a].every(part => Number.isFinite(part))) return undefined
+        return { r, g, b, a }
+      }
+      const compositeColor = (top: MeasuredColor, bottom: MeasuredColor): MeasuredColor => ({
+        r: top.r * top.a + bottom.r * (1 - top.a),
+        g: top.g * top.a + bottom.g * (1 - top.a),
+        b: top.b * top.a + bottom.b * (1 - top.a),
+        a: top.a + bottom.a * (1 - top.a),
+      })
+      /**
+       * The solid colour behind a text leaf, walking leaf → slide. A background
+       * image anywhere in the stack cannot be reduced to one colour, so the
+       * field is reported as unknown and the pure rules skip colour laws.
+       */
+      const fieldBehind = (leaf: HTMLElement, slide: HTMLElement): MeasuredColor | undefined => {
+        const layers: MeasuredColor[] = []
+        for (let node: HTMLElement | null = leaf; node !== null; node = node.parentElement) {
+          const style = getComputedStyle(node)
+          if (style.backgroundImage !== 'none') return undefined
+          const layer = measureColor(style.backgroundColor)
+          if (layer !== undefined && layer.a > 0) {
+            layers.push(layer)
+            if (layer.a >= 1) break
+          }
+          if (node === slide) break
+        }
+        const base = layers[layers.length - 1]
+        if (base === undefined || base.a < 1) return undefined
+        let field: MeasuredColor = base
+        for (let index = layers.length - 2; index >= 0; index -= 1) field = compositeColor(layers[index]!, field)
+        return field
+      }
+      /**
+       * Distinct line boxes of the leaf's contents. Inline runs of different
+       * font sizes on one visual line sit at slightly different centres, so
+       * centres within ~0.6em are clustered into one line; wrapped lines are a
+       * full line-height apart and stay separate.
+       */
+      const lineCount = (leaf: HTMLElement, fontSize: number): number => {
+        const range = document.createRange()
+        range.selectNodeContents(leaf)
+        const rects = range.getClientRects()
+        const centres: number[] = []
+        for (let index = 0; index < rects.length; index += 1) {
+          const rect = rects[index]!
+          if (rect.width <= 0.5) continue
+          centres.push((rect.top + rect.bottom) / 2)
+        }
+        if (centres.length === 0) return 0
+        centres.sort((a, b) => a - b)
+        const tolerance = Math.max(4, (Number.isFinite(fontSize) ? fontSize : 16) * 0.6)
+        let lines = 1
+        let last = centres[0]!
+        for (const centre of centres) {
+          if (centre - last > tolerance) {
+            lines += 1
+            last = centre
+          }
+        }
+        return lines
+      }
+      const measureTextLeaf = (leaf: HTMLElement, slide: HTMLElement): DesignTextSample | undefined => {
+        const style = getComputedStyle(leaf)
+        const field = fieldBehind(leaf, slide)
+        const measured = measureColor(style.color)
+        // A fully transparent run is decorative; the rules cannot see it anyway.
+        if (measured === undefined || measured.a <= 0) return undefined
+        const opacity = Number.parseFloat(style.opacity)
+        const elementOpacity = Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 1
+        // Element opacity multiplies the colour's own alpha. Compositing them
+        // here means contrast and grey-vs-coloured are judged on what the slide
+        // actually renders, not on the declared colour — an opacity-dimmed
+        // heading is exactly the washed-out treatment the rules exist to catch.
+        // Ghost layers (opacity < 0.2) are filtered by the audit before it reads
+        // the sample, so their composited colour never reaches a colour rule.
+        const alpha = measured.a * elementOpacity
+        if (alpha <= 0) return undefined
+        let color = measured
+        if (alpha < 1) {
+          // Translucent text only has a resolvable colour when the field is solid.
+          if (field === undefined) return undefined
+          color = compositeColor({ ...measured, a: alpha }, field)
+        }
+        const lineHeightPx = style.lineHeight === 'normal' ? undefined : Number.parseFloat(style.lineHeight)
+        const fontSize = Number.parseFloat(style.fontSize)
+        const rotation = parseRotation(style.transform)
+        return {
+          id: leaf.dataset.pptId ?? '',
+          ...(leaf.dataset.artRole === undefined ? {} : { role: leaf.dataset.artRole }),
+          text: (leaf.textContent ?? '').normalize('NFC').trim().slice(0, 2000),
+          fontFamily: style.fontFamily.split(',')[0]!.trim().replace(/^['"]|['"]$/g, ''),
+          fontSize,
+          fontWeight: Number.parseInt(style.fontWeight, 10) || 400,
+          color: { r: color.r, g: color.g, b: color.b },
+          opacity: elementOpacity,
+          ...(lineHeightPx === undefined || !Number.isFinite(lineHeightPx) ? {} : { lineHeightPx }),
+          letterSpacingPx: style.letterSpacing === 'normal' ? 0 : Number.parseFloat(style.letterSpacing),
+          textTransform: style.textTransform,
+          lines: lineCount(leaf, fontSize),
+          rotated: rotation !== undefined && Number.isFinite(rotation) && rotation !== 0,
+          ...(field === undefined ? {} : { background: { r: field.r, g: field.g, b: field.b } }),
+        }
+      }
+      const measureDesignPage = (slide: HTMLElement, page: number): DesignPageSample => {
+        const texts: DesignTextSample[] = []
+        for (const leaf of slide.querySelectorAll<HTMLElement>('[data-ppt-kind="text"]')) {
+          const sample = measureTextLeaf(leaf, slide)
+          if (sample !== undefined) texts.push(sample)
+        }
+        return { page, texts }
+      }
       slides.forEach((slide, slideIndex) => {
         const slideBox = slide.getBoundingClientRect()
         const leafBoxes: SlideLeafBox[] = []
@@ -307,6 +441,7 @@ export class BrowserRuntime {
           ...(anchor === undefined ? {} : { anchorAreaRatio: Math.max(0, anchor.width * anchor.height) / Math.max(1, slideBox.width * slideBox.height) }),
           frameCount: slide.querySelectorAll('[data-art-role="frame"]').length,
           leafBoxes,
+          sample: measureDesignPage(slide, slideIndex + 1),
           roleStyles: [...slide.querySelectorAll<HTMLElement>('[data-art-role]')].map(element => {
             const style = getComputedStyle(element)
             return {
@@ -328,6 +463,7 @@ export class BrowserRuntime {
       frameCount: page.frameCount,
       occupancy: occupancySilhouette(page.leafBoxes),
       roleStyles: page.roleStyles,
+      sample: page.sample,
     }))
     const previews: string[] = []
     for (let index = 0; index < pageCount; index += 1) {

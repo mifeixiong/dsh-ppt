@@ -1088,7 +1088,7 @@ function htmlTool(ctx: Context) {
     parameters: {
       outline_path: { type: 'string', required: true, description: 'Workspace-relative outline.json path returned by ppt_outline.' },
       design_plan_path: { type: 'string', description: 'Workspace-relative design-plan.json path returned by ppt_outline. Optional: when omitted, the design-plan.json sitting next to outline_path is picked up automatically.' },
-      strict_design: { type: 'boolean', description: 'Promote deterministic Art Direction heuristic warnings to blocking HTML validation errors.' },
+      strict_design: { type: 'boolean', description: 'Promote deterministic design warnings — Art Direction heuristics and Refactoring UI law findings (RUI_*) — to blocking HTML validation errors.' },
       html: { type: 'string', required: true, description: 'Complete static HTML document with .ppt-slide pages and convertible data-ppt leaves.' },
     },
     output: {

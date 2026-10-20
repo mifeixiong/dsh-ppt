@@ -1,6 +1,7 @@
 import type { SessionOwner } from './session-resources.ts';
 import { SessionResourceRegistry } from './session-resources.ts';
 import type { DeckIR } from './ir.ts';
+import type { DesignPageSample } from './design-rules.ts';
 export interface BrowserElementRef {
     ref: string;
     tag: string;
@@ -30,6 +31,8 @@ export interface HtmlPreviewResult {
             fontFamily: string;
             fontWeight: number;
         }>;
+        /** Rendered text measurements for the pure Refactoring UI audit in `design-rules.ts`. */
+        sample: DesignPageSample;
     }>;
 }
 /** A leaf rectangle expressed relative to the slide origin. */

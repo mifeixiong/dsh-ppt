@@ -7,6 +7,7 @@ import sharp from 'sharp'
 import { z } from 'zod'
 import { atomicWriteJson } from './atomic.ts'
 import { artDirectionFindings, artDirectionReviewChecklist, type DesignFinding, validateArtDirection } from './art-direction.ts'
+import { DESIGN_REVIEW_PROBES } from './design-rules.ts'
 import { PptError, throwIfAborted } from './errors.ts'
 import { DEFAULT_LIMITS, boundedInteger } from './limits.ts'
 import { inspectPptxPackage } from './pptx.ts'
@@ -431,12 +432,17 @@ export class QualityRuntime {
 
     const review: VisualReviewDocument = {
       version: 1, status: modelReviewAvailable ? 'not_performed' : 'not_available',
+      // The schema caps the checklist at 30 items: four base checks, the three
+      // design-law probes, then at most 23 art-direction items (summary + per
+      // page), so the probes stay in the list even on a full deck instead of
+      // being truncated out.
       checklist: [
         'Inspect every contact sheet for consistency and blank, black, duplicated, or missing pages.',
         'Inspect cover, agenda, data/chart, comparison, ending, and every machine-flagged page at full resolution.',
         'Check text clipping, overlap, hierarchy, alignment, contrast, image quality, stretched images, and font substitution.',
         'Record reviewed asset paths and page-specific findings; do not edit report.json directly.',
-        ...(designPlan === undefined ? ['This deck has no design-plan.json; record that Art Direction fidelity could not be verified.'] : artDirectionReviewChecklist(designPlan).slice(0, 26)),
+        ...DESIGN_REVIEW_PROBES,
+        ...(designPlan === undefined ? ['This deck has no design-plan.json; record that Art Direction fidelity could not be verified.'] : artDirectionReviewChecklist(designPlan).slice(0, 23)),
       ],
       reviewed_assets: [], findings: [],
     }
