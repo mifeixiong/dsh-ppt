@@ -40,6 +40,7 @@
 
 **DSH PPT 让 PPT 制作回归内容本身：**
 
+- ⚡ **两步出稿的快车道**：默认路线是 `ppt_outline` → `ppt_create`——大纲定内容与 Art Direction，插件按 `style.layout` 与主题配色确定性排版，不写 HTML、不开浏览器、不跑回渲，十页稿几百毫秒落盘。要手工版式时再切到精修车道（`html_create` + HTML 设计稿），两条车道共用同一个 PPTX 写入器与 OOXML 校验。
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
 - 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。另有 15 类生成式 SVG 纹样（同心圆、半调波点、HUD、刻度圆、条形码、波浪、点阵、多边形网格、等高线、经纬球、射线等）可按主题配色现取现用。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
@@ -86,6 +87,11 @@ dsh --profile web
 ```bash
 dsh --profile headless "为管理层制作一份6页的AI项目季度复盘与规划汇报"
 ```
+
+#### 生成路径：先快后精
+- **默认快车道**：`ppt_outline` 落 `outline.json`（含 `design-plan.json`）→ `ppt_create` 只传 `outline_path` 与 `output_path`，直接得到 `deck.pptx`。不产生 `deck.html`，也不需要浏览器。
+- **精修车道**：需要非模板化版式或严格复刻品牌规范时，再写 HTML 走 `html_create` → `ppt_create(html_path, ...)`，`RUI_*` 告警在转 PPTX 前清掉。
+- **质检闭环按需**：`ppt_image` → `read_image` → `visual-review.json` → `ppt_create(finalize_visual_review=true)` 只在要求验证时执行；快车道的 `report.json` 会把未执行的一层如实标成 `not_performed`，`overall_status` 停在 `unverified`。
 
 ## 依赖与环境要求
 
@@ -395,7 +401,7 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 - 🔍 **搜图 agent**：只往候选池写图片候选，不碰工件目录。搜索与落盘是两件事，冻结素材是主 agent 的活。
 - 📚 **材料 agent**：只写带来源的研究笔记与结构化数据点。
 - 🧭 **框架 agent**：只产出大纲与 Art Direction 载荷，不生成任何成品文件。
-- 🎯 **主 agent**：独占 `ppt_outline` / `html_create` / `ppt_create` / `ppt_image`，按 `outline → html → pptx → 回渲 → 逐页审稿 → finalize` 的质量门顺序交付。
+- 🎯 **主 agent**：独占 `ppt_outline` / `html_create` / `ppt_create` / `ppt_image`。默认按 `outline → pptx`（快车道）交付；需要定制版式时走 `outline → html → pptx`，需要验证时再补 `回渲 → 逐页审稿 → finalize`。
 
 角色输入输出、写入边界（谁写 `outline.json`、谁写 `deck.html`、谁只产出候选清单）、依赖顺序与失败降级路径（含「图源不可用 → 退回零外链纯矢量设计」的真实案例）见 **[多 Agent 协作流程](docs/agent-workflow.md)**。
 

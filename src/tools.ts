@@ -12,7 +12,7 @@ import { writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
 import { planSlideAnimations, TEXT_ANIMATION_DIRECTIONS, TEXT_ANIMATION_EFFECTS, TEXT_ANIMATION_STARTS, type AnimationPlan, type SlideAnimationPlanEntry, type TextAnimation } from './animation.ts'
 import { SLIDE_TRANSITION_DIRECTIONS, SLIDE_TRANSITION_SPEEDS, SLIDE_TRANSITION_TYPES, type SlideTransition, type SlideTransitionPlan } from './transitions.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
-import { createPptx } from './pptx.ts'
+import { createPptx, createPptxFromOutline } from './pptx.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
 import type { SessionOwner } from './session-resources.ts'
@@ -1023,7 +1023,7 @@ const SLIDE = {
 function outlineTool(ctx: Context) {
   return defineTool({
     name: 'ppt_outline',
-    description: 'Validate a strict PPT outline and optional structured art direction authored by this agent, then atomically create outline.json and design-plan.json without invoking another LLM.',
+    description: 'Step one of both lanes: validate a strict PPT outline and optional structured art direction authored by this agent, then atomically create outline.json and design-plan.json without invoking another LLM.',
     parameters: {
       artifact_title: { type: 'string', required: true, description: 'Title used only to allocate the artifact directory slug.' },
       slides: {
@@ -1084,7 +1084,7 @@ async function inferDesignPlanPath(workspace: string, outlinePath: string): Prom
 function htmlTool(ctx: Context) {
   return defineTool({
     name: 'html_create',
-    description: 'Pipeline step 2 of 5. Validate constrained static 1280x720 slide HTML, atomically save deck.html, and render one PNG preview per page.',
+    description: 'Design lane only: validate constrained static 1280x720 slide HTML, atomically save deck.html, and render one PNG preview per page. Skip it when you want a deck straight from outline.json.',
     parameters: {
       outline_path: { type: 'string', required: true, description: 'Workspace-relative outline.json path returned by ppt_outline.' },
       design_plan_path: { type: 'string', description: 'Workspace-relative design-plan.json path returned by ppt_outline. Optional: when omitted, the design-plan.json sitting next to outline_path is picked up automatically.' },
@@ -1216,9 +1216,9 @@ function pptxTool(ctx: Context) {
   }
   return defineTool({
     name: 'ppt_create',
-    description: 'Convert a validated constrained HTML deck to editable PPTX elements, reject unsupported leaves by default, and commit only after OOXML validation.',
+    description: 'Build an editable PPTX. Pass html_path to convert a validated HTML deck; omit it to lay the deck out directly from outline.json — the fast lane: no HTML authoring, no browser render, one call from outline to PPTX. OOXML is validated before the file is committed either way.',
     parameters: {
-      html_path: { type: 'string', required: true, description: 'Workspace-relative deck.html path returned by html_create.' },
+      html_path: { type: 'string', description: 'Workspace-relative deck.html path returned by html_create. Omit to use the fast lane, which lays out the pages deterministically from outline.json (and design-plan.json) instead.' },
       outline_path: { type: 'string', required: true, description: 'Workspace-relative outline.json path returned by ppt_outline.' },
       output_path: { type: 'string', required: true, description: 'New workspace-relative .pptx path in the same artifact directory.' },
       fallback_mode: {
@@ -1280,12 +1280,28 @@ function pptxTool(ctx: Context) {
       const visualReviewPath = join(artifact, 'visual-review.json')
       if (args.finalize_visual_review === true) {
         await Promise.all([
-          resolveWorkspacePath(workspace, args.html_path, { mustExist: true, kind: 'file' }),
+          ...(args.html_path === undefined ? [] : [resolveWorkspacePath(workspace, args.html_path, { mustExist: true, kind: 'file' })]),
           resolveWorkspacePath(workspace, args.outline_path, { mustExist: true, kind: 'file' }),
         ])
         const report = await applyVisualReview(workspace, reportPath, visualReviewPath)
         const conversion = report.conversion ?? {}
         return result(report, reportPath, visualReviewPath, conversion, motion.summary)
+      }
+      if (args.html_path === undefined) {
+        // Fast lane: outline -> PPTX in one call. The report records the two
+        // layers that need no browser and no renderer, so `overall_status` stays
+        // `unverified` until someone actually asks for `ppt_image`.
+        const conversion = await createPptxFromOutline(
+          workspace, args.outline_path, normalizedOutput, exec.signal, motion.transitions, motion.animations,
+        )
+        const report = await ctx.pptRuntime.quality.evaluateStructural(
+          workspace, conversion.pptx_path, reportPath, visualReviewPath, conversion.page_count,
+          await ctx.pptRuntime.canReviewImages(exec.agent), {
+            page_count: conversion.page_count, native_element_count: conversion.native_element_count,
+            rasterized_elements: conversion.rasterized_elements, source: 'outline-fast-lane',
+          }, exec.signal,
+        )
+        return result(report, reportPath, visualReviewPath, report.conversion ?? {}, motion.summary)
       }
       const conversion = await createPptx(
         ctx.pptRuntime.browser, owner, workspace, args.html_path, args.outline_path, normalizedOutput,

@@ -40,6 +40,7 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 
 **DSH PPT brings presentation making back to what matters — your content:**
 
+- ⚡ **Two-call fast lane**: the default route is `ppt_outline` → `ppt_create` — the outline carries the content and the art direction, and the plugin lays the pages out deterministically from each slide's `style.layout` and the theme palette. No HTML authoring, no browser, no re-render, so a ten-page deck lands in a fraction of a second. Switch to the design lane (`html_create` plus a hand-authored HTML deck) when a page needs a bespoke layout; both lanes share one PPTX writer and one OOXML validation pass.
 - 📝 **Truly Native & Editable**: Generates standard `.pptx` files rather than whole-page images. Texts, shapes, and charts can be freely edited and adjusted in Microsoft PowerPoint, Apple Keynote, or WPS.
 - 🎨 **Professional Aesthetics & Layouts**: No more cookie-cutter templates. AI intelligently tailors color schemes, typography hierarchies, and page compositions for a polished business look.
 - 🎭 **12 Built-in Themes**: Each theme is a verified design recipe — colours drawn from IBM Carbon, Tailwind, Radix and Microsoft Fluent 2, gradients adapted from curated Color Hunt and uiGradients palettes, fonts restricted to families this machine really renders, plus motion rhythm, type treatment, signature device, anti-patterns and per-page layout notes. A library of 15 generative SVG motifs (concentric circles, halftone, HUD, tick circle, barcode, waves, dot matrix, polygon mesh, contours, wireframe globe, rays and more) renders in the theme palette on demand. Pick one with `ppt_themes`; every palette and gradient is checked against WCAG AA (≥4.5:1) by machine, and the page ground (including native gradients) survives into the PPTX.
@@ -86,6 +87,11 @@ Generate a full deck directly with a single command:
 ```bash
 dsh --profile headless "Create a 6-page AI project quarterly review and roadmap deck for management"
 ```
+
+#### Generation Path: Fast by Default, Precise on Request
+- **Fast lane (default)**: `ppt_outline` writes `outline.json` (plus `design-plan.json`) → `ppt_create` with only `outline_path` and `output_path` returns `deck.pptx`. No `deck.html`, no browser.
+- **Design lane**: when a page needs a non-template layout or a strict brand reproduction, author the HTML and go `html_create` → `ppt_create(html_path, ...)`, clearing `RUI_*` findings before conversion.
+- **Verification is opt-in**: `ppt_image` → `read_image` → `visual-review.json` → `ppt_create(finalize_visual_review=true)` runs only when verification is asked for; the fast lane's `report.json` records the layers it did not run as `not_performed` and keeps `overall_status` at `unverified`.
 
 ## Dependencies and requirements
 
@@ -389,7 +395,7 @@ A deck can also be produced by several agents working in parallel: one scouting 
 - 🔍 **Image scout**: writes image candidates into a candidate pool only, never into the artifact directory. Searching and freezing are separate steps — freezing belongs to the lead agent.
 - 📚 **Research agent**: writes sourced notes and structured data points only.
 - 🧭 **Frame agent**: produces the outline payload and Art Direction only; it creates no deliverable files.
-- 🎯 **Lead agent**: exclusively owns `ppt_outline` / `html_create` / `ppt_create` / `ppt_image`, and follows the gate order `outline → html → pptx → re-render → per-page review → finalize`.
+- 🎯 **Lead agent**: exclusively owns `ppt_outline` / `html_create` / `ppt_create` / `ppt_image`. The default delivery is `outline → pptx` (fast lane); use `outline → html → pptx` when the layout must be bespoke, and add `re-render → per-page review → finalize` only when verification is wanted.
 
 Roles, inputs and outputs, write boundaries (who writes `outline.json`, who writes `deck.html`, who only produces a candidate list), dependency order, and failure fallbacks — including the real case of "image sources unavailable → fall back to a zero-external-link vector design" — are documented in **[Multi-Agent Workflow](docs/agent-workflow.md)** (the document is written in Chinese).
 

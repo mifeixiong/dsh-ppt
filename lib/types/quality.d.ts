@@ -81,5 +81,15 @@ export declare class QualityRuntime {
     }, fontDirs?: readonly string[], pptImage?: PptImageRuntime);
     refresh(owner: SessionOwner, workspace: string, pptxPathInput: string, modelReviewAvailable: boolean, signal?: AbortSignal, nativeAutomationApproved?: boolean): Promise<PptQualityReport | undefined>;
     evaluate(owner: SessionOwner, workspace: string, pptxPathInput: string, htmlPreviewInputs: string[], reportPathInput: string, visualReviewPathInput: string, expectedPages: number, modelReviewAvailable: boolean, conversion?: Record<string, unknown>, signal?: AbortSignal, nativeAutomationApproved?: boolean): Promise<PptQualityReport>;
+    /**
+     * Structural-only pass for the fast lane.
+     *
+     * The fast lane has no HTML previews to compare against and does not ask for
+     * a PPTX render, so the two layers that *can* run without either — package
+     * structure and image quality — are the two it runs. Everything else is
+     * recorded as `not_performed`, which keeps the report honest: `overall_status`
+     * stays `unverified` until someone actually calls `ppt_image`.
+     */
+    evaluateStructural(workspace: string, pptxPathInput: string, reportPathInput: string, visualReviewPathInput: string, expectedPages: number, modelReviewAvailable: boolean, conversion?: Record<string, unknown>, signal?: AbortSignal): Promise<PptQualityReport>;
 }
 export declare function applyVisualReview(workspace: string, reportPathInput: string, reviewPathInput: string): Promise<PptQualityReport>;

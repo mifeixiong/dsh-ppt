@@ -8,7 +8,9 @@ import type { BrowserRuntime } from './browser.ts'
 import { PptError, throwIfAborted } from './errors.ts'
 import type { DeckIR, ElementIR, ElementStyleIR } from './ir.ts'
 import { pxToInches, pxToPoints, SLIDE_HEIGHT_IN, SLIDE_WIDTH_IN } from './ir.ts'
-import { validatePptOutline } from './outline.ts'
+import { validatePptOutline, type PptOutline } from './outline.ts'
+import { validateArtDirection } from './art-direction.ts'
+import { buildOutlineDeckIr } from './quick.ts'
 import { isLocalFilesystemPath, isPathInside, resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import type { SessionOwner } from './session-resources.ts'
 import { validateDeckHtmlSource } from './html.ts'
@@ -271,6 +273,40 @@ export async function createPptx(
     }
   }
 
+  return writeDeckPptx({
+    ir, outline, workspace, artifactRoot, outputPath, signal,
+    ...(transitions === undefined ? {} : { transitions }),
+    ...(animations === undefined ? {} : { animations }),
+    rasterized,
+    subject: 'Editable PPTX generated from constrained HTML',
+  })
+}
+
+export interface WriteDeckPptxOptions {
+  /** The slide tree to write. Both the HTML lane and the outline lane produce one. */
+  ir: DeckIR
+  outline: PptOutline
+  workspace: string
+  artifactRoot: string
+  outputPath: string
+  signal?: AbortSignal
+  transitions?: SlideTransitionPlan
+  animations?: AnimationPlan
+  /** Elements already degraded to images by the caller; the writer only records them. */
+  rasterized?: readonly RasterizedElementRecord[]
+  subject?: string
+}
+
+/**
+ * The single PPTX writer. Both entry points converge here: the HTML lane hands
+ * over an IR measured from a rendered page, the outline lane a deterministic IR
+ * built from the content model, and everything downstream — native shapes,
+ * backgrounds, motion, OOXML validation, atomic commit — is identical. Keeping
+ * one writer is what makes the fast lane skip *work*, not *guarantees*.
+ */
+export async function writeDeckPptx(options: WriteDeckPptxOptions): Promise<PptCreateResult> {
+  const { ir, outline, workspace, artifactRoot, outputPath, signal, transitions, animations } = options
+  const rasterized = options.rasterized ?? []
   // A gradient cannot be expressed through the pptxgenjs slide API, so it is
   // omitted here and injected into the finished package below. A solid color
   // still uses the native API and stays byte-identical to a color-only deck.
@@ -298,7 +334,7 @@ export async function createPptx(
   pptx.layout = 'DSH_PPT_16_9'
   pptx.author = 'DSH PPT'
   pptx.company = 'DSH'
-  pptx.subject = 'Editable PPTX generated from constrained HTML'
+  pptx.subject = options.subject ?? 'Editable PPTX generated from constrained HTML'
   pptx.title = outline[0]?.title ?? 'Presentation'
   let nativeElementCount = 0
   for (const slideIr of ir.slides) {
@@ -329,7 +365,7 @@ export async function createPptx(
     await atomicWriteFile(outputPath, bytes, { signal })
     return {
       pptx_path: workspaceRelative(workspace, outputPath), page_count: outline.length,
-      native_element_count: nativeElementCount, rasterized_elements: rasterized, structural_status: 'passed',
+      native_element_count: nativeElementCount, rasterized_elements: [...rasterized], structural_status: 'passed',
     }
   } catch (error) {
     if (signal?.aborted) throw new PptError('PPT_CREATE_ABORTED', 'PPTX creation was cancelled', { cause: error })
@@ -337,4 +373,51 @@ export async function createPptx(
   } finally {
     await rm(temporary, { force: true })
   }
+}
+
+/**
+ * Fast lane: build the PPTX straight from `outline.json` (+ `design-plan.json`)
+ * with no HTML authoring, no browser render and no preview pass.
+ *
+ * It shares every guarantee the HTML lane has after the IR exists — the same
+ * writer, the same OOXML validation, the same atomic commit — and it drops the
+ * two steps that only exist to feed the design loop: authoring the HTML and
+ * measuring it in a browser.
+ */
+export async function createPptxFromOutline(
+  workspace: string,
+  outlinePathInput: string,
+  outputPathInput: string,
+  signal?: AbortSignal,
+  transitions?: SlideTransitionPlan,
+  animations?: AnimationPlan,
+): Promise<PptCreateResult> {
+  throwIfAborted(signal, 'PPT_CREATE_ABORTED')
+  const [outlinePath, outputPath] = await Promise.all([
+    resolveWorkspacePath(workspace, outlinePathInput, { mustExist: true, kind: 'file' }),
+    resolveWorkspacePath(workspace, outputPathInput),
+  ])
+  const artifactRoot = dirname(outlinePath)
+  if (dirname(outputPath) !== artifactRoot) {
+    throw new PptError('PPT_CREATE_INPUT_INVALID', 'the outline and the PPTX output must share one artifact directory')
+  }
+  const outline = validatePptOutline(JSON.parse(await readFile(outlinePath, 'utf8')))
+  // A design plan written by `ppt_outline` sits next to the outline and is
+  // picked up automatically, exactly like the HTML lane does it. A malformed
+  // plan is an error, not something to silently fall back from.
+  let designPlan: ReturnType<typeof validateArtDirection> | undefined
+  try {
+    designPlan = validateArtDirection(JSON.parse(await readFile(join(artifactRoot, 'design-plan.json'), 'utf8')), outline.length)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  const ir = await buildOutlineDeckIr(outline, {
+    workspace, artifactRoot, ...(designPlan === undefined ? {} : { designPlan }),
+  })
+  return writeDeckPptx({
+    ir, outline, workspace, artifactRoot, outputPath, signal,
+    ...(transitions === undefined ? {} : { transitions }),
+    ...(animations === undefined ? {} : { animations }),
+    subject: 'Editable PPTX generated from the content outline',
+  })
 }

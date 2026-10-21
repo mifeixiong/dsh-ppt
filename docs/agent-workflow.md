@@ -29,9 +29,24 @@
 | `ppt_fonts` | 只读查询**插件批准注册表内当前可用**的字体（不是本机全量字体清单） |
 | `ppt_themes` | 只读查询内置主题库：目录、单套完整配方（配色、排印规则、签名手法、海报排印方案、生成式纹样、禁用习惯、素材处理、渐变）、按页型展开的逐页视觉方案（构图、疏密、底色角色、标题处理、帧策略、具体色值、可选渐变与 poster_move），以及按 `motif_id` 生成的 SVG 纹样 |
 | `ppt_outline` | 校验大纲与 Art Direction，原子生成 `outline.json` 与 `design-plan.json`；给了 `theme_id` 时同时校验主题一致性 |
-| `html_create` | 校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
-| `ppt_create` | 把 HTML 设计稿转成可编辑 PPTX；也负责 `finalize_visual_review=true` |
+| `html_create` | **精修车道专用**：校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
+| `ppt_create` | 出稿的唯一入口：给 `html_path` 时转换 HTML；**省略 `html_path` 时按 `outline.json` 直接排版出 PPTX（快车道）**；也负责 `finalize_visual_review=true` |
 | `ppt_image` | 用真实渲染器打开 PPTX，输出逐页 PNG 与联系表，并可刷新机器质量报告 |
+
+### 0.1 两条车道：快车道是默认
+
+| | 快车道（默认） | 精修车道（按需） |
+| :--- | :--- | :--- |
+| 调用序列 | `ppt_outline` → `ppt_create`（不带 `html_path`） | `ppt_outline` → `html_create` → `ppt_create`（带 `html_path`） |
+| 排版来源 | 插件按 `outline.json` 的 `style.layout` 与 `art_direction` 确定性排版 | 模型手写的 1280×720 静态 HTML |
+| 依赖 | 无浏览器、无回渲 | 需要本机浏览器内核做逐页回渲与 `RUI_*` 校验 |
+| 产物 | 原生可编辑 PPTX（文本/形状/图片都是真对象） | 同上 |
+| 质量层 | `report.json`：structural 实算，render 与 visual 两层为 `not_performed`，`overall_status=unverified` | 同上，可按需跑 `ppt_image` + 审稿闭环 |
+| 适用 | 绝大多数汇报稿；页数多、时间紧 | 需要非模板化版式、严格复刻品牌规范、需要回渲验证 |
+
+两条车道共用同一个 PPTX 写入器与同一套 OOXML 校验，区别只在「页面怎么来」：快车道由代码排，精修车道由模型排。快车道同样遵守画布 1280×720、72/64 页边距、字号层级、正文 4.5:1 对比度等纪律，所以两条车道的稿子看起来是同一个产品。
+
+快车道覆盖大纲允许的全部布局：`cover`/`center`/`full-bleed`/`closing`/`quote-focus` 走海报页，`title-content` 走正文页，`two-column`/`three-column`/`grid`/`split` 走分栏页，`timeline-*`/`process-*` 走步骤页，`chart-focus` 走数据页（同页 `data` 项 ≥3 时画条形对比，否则画指标栅格），`hero-image`/`image-*` 走图文页。
 
 两条必须记住的限制：
 
@@ -164,18 +179,23 @@ ppt-output/_staging/<topic>/
 ## 4. 依赖顺序与质量门
 
 ```
-Gate A  澄清（主 agent，ask_user_question）
+默认（快车道，两步出稿）
+Gate A  澄清（ask_user_question）
    ↓
+Gate C  ppt_outline  → <root> / outline.json / design-plan.json / fonts
+   ↓
+Gate F  ppt_create(outline_path, output_path)      → deck.pptx  ← 到此可交付
+
+可选（精修车道，需要手工版式时才走）
 Gate B  并行：材料 agent 出 research/  ·  搜图 agent 出 images/candidates.json
-   ↓
-Gate C  框架 agent 交 frame/ 两份载荷  →  主 agent 调 ppt_outline  拿 <root> / outline_path / design_plan_path / design_status / fonts
    ↓
 Gate D  冻结素材：候选 → <root>/assets/images/ + source-manifest.json
    ↓
 Gate E  html_create(outline_path, design_plan_path, html)  → deck.html + preview/*.png
    ↓
 Gate F  ppt_create(html_path, outline_path, output_path)   → deck.pptx
-   ↓
+
+可选（质检闭环，仅在要求验证/审稿时走）
 Gate G  ppt_image(pptx_path, backend=auto, refresh_quality=true)  → 逐页图 + 联系表 + 重算机器四层
    ↓
 Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(..., finalize_visual_review=true)
@@ -261,7 +281,16 @@ Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(...,
 
 ## 6. 一页版执行清单
 
-主 agent 视角，照抄即可：
+主 agent 视角，照抄即可。
+
+**快车道（默认，两步出稿）**
+
+1. `ask_user_question` 补齐用途、受众、页数、语言、品牌；用户已给的不要重复问。
+2. `ppt_outline`：一次写全 `slides` 与 `art_direction`，读返回的 `outline_path`、`design_status`、`fonts`、`blocking_warnings`；非空就地返工。
+3. `ppt_create`：只给 `outline_path` 与 `output_path`，**不要传 `html_path`**。拿到 `pptx_path` 与 `report.json`。
+4. 交付时照抄 `report.json` 的各层状态：structural 为实算结果，render / automatic_visual / model_visual 是 `not_performed`，`overall_status=unverified`。
+
+**精修车道（需要手工版式时）**
 
 1. `ask_user_question` 补齐用途、受众、页数、语言、品牌。
 2. `todo_write` 建清单，把三个子角色的任务与写入范围写清楚。
@@ -276,6 +305,10 @@ Gate H  read_image 逐页审稿 → write visual-review.json → ppt_create(...,
 11. `write` 出 `visual-review.json`。
 12. `ppt_create(..., finalize_visual_review=true)` 重算四层。
 13. 只有总体状态为 `verified` 才对外声明通过；否则写明是哪一层没执行或失败。
+
+**质检闭环（可选，仅在要求验证时）**
+
+`ppt_image(backend=auto, refresh_quality=true)` → `read_image` 审稿 → `write visual-review.json` → `ppt_create(finalize_visual_review=true)`。没走这一步就不要说“已验证”。
 
 ---
 

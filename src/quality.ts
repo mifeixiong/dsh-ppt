@@ -348,9 +348,18 @@ export class QualityRuntime {
       throw new PptError('PPT_QUALITY_FAILED', 'existing report.json is not the machine report for this PPTX')
     }
     const expectedPages = pptxPageCount(new Uint8Array(await readFile(pptxPath)))
-    const htmlPreviews = Array.from({ length: expectedPages }, (_, index) =>
+    const previewPaths = Array.from({ length: expectedPages }, (_, index) =>
       workspaceRelative(workspace, join(artifactRoot, 'preview', `page-${String(index + 1).padStart(3, '0')}.png`)))
-    await Promise.all(htmlPreviews.map(path => resolveWorkspacePath(workspace, path, { mustExist: true, kind: 'file' })))
+    // A deck built by the fast lane has no HTML previews at all. That is not an
+    // error: the report simply keeps the HTML-comparison half of the automatic
+    // visual layer out of scope instead of failing the refresh.
+    const htmlPreviews: string[] = []
+    try {
+      await Promise.all(previewPaths.map(path => resolveWorkspacePath(workspace, path, { mustExist: true, kind: 'file' })))
+      htmlPreviews.push(...previewPaths)
+    } catch {
+      htmlPreviews.length = 0
+    }
     return this.evaluate(
       owner, workspace, workspaceRelative(workspace, pptxPath), htmlPreviews,
       workspaceRelative(workspace, reportPath), workspaceRelative(workspace, visualReviewPath),
@@ -467,14 +476,22 @@ export class QualityRuntime {
       try {
         const analyses = await Promise.all(report.artifacts.pptx_previews.map((path, index) => analyzePage(join(workspace, path), index + 1, signal)))
         report.layers.automatic_visual.pages = analyses.map(item => item.metrics)
-        const comparisons = await Promise.all(report.artifacts.pptx_previews.map((path, index) => compareImages(join(workspace, htmlPreviews[index]!), join(workspace, path), index + 1, signal)))
-        const cjkFindings = await cjkRenderFindings(
-          new Uint8Array(await readFile(pptxPath)),
-          htmlPreviews.map(path => join(workspace, path)),
-          report.artifacts.pptx_previews.map(path => join(workspace, path)),
-          expectedPages,
-          signal,
-        )
+        // Comparisons need a page-for-page HTML preview set. Without one the
+        // rendered pages are still analysed; only the drift and glyph-coverage
+        // checks are out of scope.
+        const comparable = htmlPreviews.length === expectedPages
+        const comparisons = comparable
+          ? await Promise.all(report.artifacts.pptx_previews.map((path, index) => compareImages(join(workspace, htmlPreviews[index]!), join(workspace, path), index + 1, signal)))
+          : []
+        const cjkFindings = comparable
+          ? await cjkRenderFindings(
+            new Uint8Array(await readFile(pptxPath)),
+            htmlPreviews.map(path => join(workspace, path)),
+            report.artifacts.pptx_previews.map(path => join(workspace, path)),
+            expectedPages,
+            signal,
+          )
+          : []
         report.layers.automatic_visual.html_comparison_pages = comparisons.map(item => item.metrics)
         report.layers.automatic_visual.findings = [
           ...designFindings,
@@ -502,6 +519,81 @@ export class QualityRuntime {
     }
     synchronizeStatuses(report)
     await atomicWriteJson(visualReviewPath, review, { overwrite: true })
+    await atomicWriteJson(reportPath, report, { overwrite: true })
+    return report
+  }
+
+  /**
+   * Structural-only pass for the fast lane.
+   *
+   * The fast lane has no HTML previews to compare against and does not ask for
+   * a PPTX render, so the two layers that *can* run without either — package
+   * structure and image quality — are the two it runs. Everything else is
+   * recorded as `not_performed`, which keeps the report honest: `overall_status`
+   * stays `unverified` until someone actually calls `ppt_image`.
+   */
+  async evaluateStructural(
+    workspace: string,
+    pptxPathInput: string,
+    reportPathInput: string,
+    visualReviewPathInput: string,
+    expectedPages: number,
+    modelReviewAvailable: boolean,
+    conversion?: Record<string, unknown>,
+    signal?: AbortSignal,
+  ): Promise<PptQualityReport> {
+    throwIfAborted(signal)
+    expectedPages = boundedInteger(expectedPages, 'expectedPages', 1, DEFAULT_LIMITS.maxSlides)
+    const pptxPath = await resolveWorkspacePath(workspace, pptxPathInput, { mustExist: true, kind: 'file' })
+    const reportPath = await resolveWorkspacePath(workspace, reportPathInput)
+    const visualReviewPath = await resolveWorkspacePath(workspace, visualReviewPathInput)
+    const artifactRoot = dirname(pptxPath)
+    let designPlan: ReturnType<typeof validateArtDirection> | undefined
+    try {
+      designPlan = validateArtDirection(JSON.parse(await readFile(join(artifactRoot, 'design-plan.json'), 'utf8')), expectedPages)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+    }
+    const designFindings = designPlan === undefined ? [] : artDirectionFindings(designPlan)
+    const report: PptQualityReport = {
+      version: 1, machine_owned: true, generated_at: new Date().toISOString(), pptx_path: workspaceRelative(workspace, pptxPath),
+      structural_status: 'not_performed', render_status: 'not_performed', automatic_visual_status: 'not_performed',
+      model_visual_status: modelReviewAvailable ? 'not_performed' : 'not_available', overall_status: 'unverified',
+      layers: {
+        structural: { status: 'not_performed', findings: [] },
+        render: { status: 'not_performed', findings: [] },
+        automatic_visual: {
+          status: 'not_performed', findings: designFindings, pages: [], html_comparison_pages: [],
+          design_fidelity: {
+            mode: designPlan === undefined ? 'legacy' : 'directed',
+            checks: designPlan === undefined ? [] : ['art-direction-schema', 'page-sequence', 'composition-rhythm', 'frame-budget', 'review-checklist'],
+            pages: designPlan?.slides.map(slide => ({
+              page: slide.page, composition: slide.composition, density: slide.density,
+              background_role: slide.background_role, visual_anchor: slide.visual_anchor.kind, frame_policy: slide.frame_policy,
+            })) ?? [],
+            findings: designFindings,
+          },
+        },
+        model_visual: { status: modelReviewAvailable ? 'not_performed' : 'not_available', findings: [] },
+      },
+      artifacts: {
+        html_previews: [], pptx_previews: [], contact_sheets: [], high_risk_previews: [],
+        visual_review: workspaceRelative(workspace, visualReviewPath),
+      },
+      ...(conversion === undefined ? {} : { conversion }),
+    }
+    try {
+      const bytes = new Uint8Array(await readFile(pptxPath))
+      report.layers.structural.findings = [
+        ...structuralFindings(bytes, expectedPages),
+        ...await imageQualityFindings(bytes, expectedPages, signal),
+      ]
+      report.layers.structural.status = report.layers.structural.findings.some(item => item.severity === 'error') ? 'failed' : 'passed'
+    } catch (error) {
+      report.layers.structural.status = 'failed'
+      report.layers.structural.findings.push({ code: 'STRUCTURE_INVALID', severity: 'error', message: error instanceof Error ? error.message : String(error) })
+    }
+    synchronizeStatuses(report)
     await atomicWriteJson(reportPath, report, { overwrite: true })
     return report
   }
