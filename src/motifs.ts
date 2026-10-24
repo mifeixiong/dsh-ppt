@@ -10,6 +10,8 @@
  * the HTML whitelist rejects them and PowerPoint cannot round-trip them.
  */
 
+import { terrainLines } from './terrain.ts'
+
 export interface MotifPalette {
   /** Main line/dot colour; the theme's text colour for that tonal group. */
   ink: string
@@ -281,21 +283,20 @@ function polygonMesh(palette: MotifPalette): string {
 function contours(palette: MotifPalette): string {
   const ink = hex(palette.ink)
   const accent = hex(palette.accent)
-  const parts: string[] = []
-  for (let ring = 0; ring < 11; ring += 1) {
-    const radius = 40 + ring * 26
-    const wobble = 8 + ring * 1.6
-    const points: string[] = []
-    for (let step = 0; step <= 72; step += 1) {
-      const angle = (step / 72) * Math.PI * 2
-      const distance = radius + Math.sin(angle * 3 + ring * 0.4) * wobble + Math.cos(angle * 5 - ring) * 4
-      const x = 380 + Math.cos(angle) * distance
-      const y = 190 + Math.sin(angle) * distance * 0.52
-      points.push(`${step === 0 ? 'M' : 'L'}${round(x)} ${round(y)}`)
-    }
-    parts.push(`<path d="${points.join(' ')} Z" fill="none" stroke="${ring === 7 ? accent : ink}" stroke-width="${ring === 7 ? 1.6 : 1}" stroke-opacity="${ring === 7 ? 0.45 : round(0.07 + ring * 0.01, 3)}"/>`)
-  }
-  return document(760, 380, parts.join(''))
+  const width = 760
+  const height = 380
+  // Fractal Perlin terrain cut into iso-lines. The field is seeded, so every
+  // render is byte-identical; the line geometry is simplified to keep the SVG
+  // inside the motif size budget.
+  const lines = terrainLines({ width, height })
+  const parts = lines.map(line => {
+    const accentLine = line.level === 7
+    const indexLine = line.level % 5 === 0
+    const opacity = accentLine ? 0.34 : round(0.045 + line.level * 0.007 + (indexLine ? 0.03 : 0), 3)
+    const d = line.points.map((point, index) => `${index === 0 ? 'M' : 'L'}${Math.round(point.x)} ${Math.round(point.y)}`).join(' ')
+    return `<path d="${d}" fill="none" stroke="${accentLine ? accent : ink}" stroke-width="${accentLine ? 1.4 : indexLine ? 1.1 : 1}" stroke-opacity="${opacity}"/>`
+  })
+  return document(width, height, parts.join(''))
 }
 
 function commonShapes(palette: MotifPalette): string {
@@ -386,7 +387,7 @@ export const MOTIFS: readonly MotifDefinition[] = [
   { id: 'repeat-lines', name: '重复线条 / repeating lines', placement: 'An edge band, one third of the page wide.', description: 'Even vertical hairlines with two accent rules marking a field.', width: 640, height: 360, build: repeatLines },
   { id: 'dot-matrix', name: '点阵 / dot matrix', placement: 'A 320–640px corner field; low contrast only.', description: 'A 16×9 dot grid with a deterministic accent dot.', width: 640, height: 360, build: dotMatrix },
   { id: 'polygon-mesh', name: '多边形网格 / polygon mesh', placement: 'Right half or full-bleed at 0.1–0.2 opacity.', description: 'Jittered triangulation with node dots, like a surface mesh.', width: 640, height: 420, build: polygonMesh },
-  { id: 'contour-lines', name: '等高线 / contour lines', placement: 'A 500–760px field behind a quote or metric.', description: 'Closed wobbly rings: a topographic map without a map.', width: 760, height: 380, build: contours },
+  { id: 'contour-lines', name: '等高线 / contour lines', placement: 'A full-width deep background field behind a quote or metric; keep it below the text layer.', description: 'Fractal Perlin terrain cut into ten iso-lines, with index contours every fifth level and one accent line.', width: 760, height: 380, build: contours },
   { id: 'common-shapes', name: '常见图形 / common shapes', placement: 'A 320–520px corner cluster; three shapes maximum.', description: 'Circle, square, triangle and arc in one restrained cluster.', width: 520, height: 360, build: commonShapes },
   { id: 'nested-polygons', name: '嵌套多边形 / nested polygons', placement: 'A 320–480px poster mark; one per deck.', description: 'Nested triangles and squares, rotated a few degrees each layer.', width: 480, height: 480, build: nestedPolygons },
   { id: 'wireframe-globe', name: '经纬球 / wireframe globe', placement: 'A 320–480px device at the right edge of a hero page.', description: 'A latitude/longitude wireframe with one accented meridian.', width: 480, height: 480, build: wireframeGlobe },
