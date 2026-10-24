@@ -118,22 +118,88 @@ function tickCircle(palette: MotifPalette): string {
   return document(440, 440, parts.join(''))
 }
 
+/**
+ * Code 39, the one ornament in this catalogue that is also a real symbology:
+ * nine elements per character (five bars, four spaces), exactly three of them
+ * wide, framed by the start/stop character `*`. The table below is the public
+ * standard, so the motif needs no barcode font installed and no rasteriser: the
+ * bars are drawn on an integer module grid. Typesetting a barcode font instead
+ * lands the narrow bars on fractional pixels (at 44 px the narrow module is
+ * 2.92 px), and the wide/narrow rhythm stops being exact.
+ */
+const CODE39_PATTERNS: Readonly<Record<string, string>> = Object.freeze({
+  '0': '000110100', '1': '100100001', '2': '001100001', '3': '101100000', '4': '000110001',
+  '5': '100110000', '6': '001110000', '7': '000100101', '8': '100100100', '9': '001100100',
+  A: '100001001', B: '001001001', C: '101001000', D: '000011001', E: '100011000',
+  F: '001011000', G: '000001101', H: '100001100', I: '001001100', J: '000011100',
+  K: '100000011', L: '001000011', M: '101000010', N: '000010011', O: '100010010',
+  P: '001010010', Q: '000000111', R: '100000110', S: '001000110', T: '000010110',
+  U: '110000001', V: '011000001', W: '111000000', X: '010010001', Y: '110010000',
+  Z: '011010000',
+  '-': '010000101', '.': '110000100', ' ': '011000100', '$': '010101000',
+  '/': '010100010', '+': '010001010', '%': '000101010', '*': '010010100',
+})
+
+/** Decorative payload; Code 39 is uppercase, digits, space and `- . $ / + %`. */
+export const BARCODE_PAYLOAD = 'DSH 2026'
+/** Narrow module in canvas px; three keeps the ten-character payload inside 520 px. */
+const BARCODE_MODULE = 3
+/** Code 39 wants ten narrow modules of quiet zone on both sides. */
+const BARCODE_QUIET_MODULES = 10
+const BARCODE_BAR_HEIGHT = 110
+const BARCODE_WIDTH = 520
+const BARCODE_HEIGHT = 180
+/** Wide:narrow ratio. The spec allows 2.0–3.0; 2.25 matches common barcode fonts. */
+const BARCODE_RATIO = 2.25
+
+export interface BarcodeBar {
+  x: number
+  width: number
+}
+
+/**
+ * Encode a payload into bar rectangles on an integer module grid. Bars only:
+ * the spaces between them are the gaps, so the geometry can be rasterised or
+ * drawn as SVG without changing the pattern.
+ */
+export function code39Bars(
+  payload: string,
+  options: { module: number; quietModules?: number },
+): { bars: BarcodeBar[]; width: number } {
+  if (!Number.isInteger(options.module) || options.module <= 0) {
+    throw new Error(`Code 39 needs a positive integer module, got ${options.module}`)
+  }
+  const module = options.module
+  const quietModules = options.quietModules ?? BARCODE_QUIET_MODULES
+  const wide = Math.max(module + 1, Math.round(module * BARCODE_RATIO))
+  const characters = `*${payload}*`
+  const bars: BarcodeBar[] = []
+  let x = quietModules * module
+  for (const [index, character] of [...characters].entries()) {
+    const pattern = CODE39_PATTERNS[character.toUpperCase()]
+    if (pattern === undefined) throw new Error(`Code 39 cannot encode ${JSON.stringify(character)}`)
+    for (const [element, bit] of [...pattern].entries()) {
+      const width = bit === '1' ? wide : module
+      if (element % 2 === 0) bars.push({ x, width })
+      x += width
+    }
+    if (index < characters.length - 1) x += module
+  }
+  return { bars, width: x + quietModules * module }
+}
+
 function barcode(palette: MotifPalette): string {
   const ink = hex(palette.ink)
   const accent = hex(palette.accent)
-  const parts: string[] = []
-  let x = 24
-  let seed = 7
-  while (x < 500) {
-    const width = 1 + Math.round(noise(seed) * 4)
-    const height = 60 + Math.round(noise(seed + 1) * 90)
-    const accentBar = noise(seed + 2) > 0.82
-    const y = 90 - height / 2
-    parts.push(`<rect x="${x}" y="${round(y)}" width="${width}" height="${height}" fill="${accentBar ? accent : ink}" fill-opacity="${accentBar ? 0.55 : 0.34}"/>`)
-    x += width + 2 + Math.round(noise(seed + 3) * 5)
-    seed += 4
-  }
-  return document(520, 180, parts.join(''))
+  const { bars, width } = code39Bars(BARCODE_PAYLOAD, { module: BARCODE_MODULE })
+  const originX = Math.round((BARCODE_WIDTH - width) / 2)
+  const top = Math.round((BARCODE_HEIGHT - BARCODE_BAR_HEIGHT) / 2) - 8
+  const parts = bars.map(bar => `<rect x="${originX + bar.x}" y="${top}" width="${bar.width}" height="${BARCODE_BAR_HEIGHT}" fill="${ink}"/>`)
+  // The accent rule sits below the bars, outside the quiet zone, so it never
+  // touches the pattern.
+  const baseline = top + BARCODE_BAR_HEIGHT + 8
+  parts.push(`<line x1="${originX + BARCODE_QUIET_MODULES * BARCODE_MODULE}" y1="${baseline}" x2="${originX + width - BARCODE_QUIET_MODULES * BARCODE_MODULE}" y2="${baseline}" stroke="${accent}" stroke-width="2" stroke-opacity="0.55"/>`)
+  return document(BARCODE_WIDTH, BARCODE_HEIGHT, parts.join(''))
 }
 
 function waves(palette: MotifPalette): string {
@@ -315,7 +381,7 @@ export const MOTIFS: readonly MotifDefinition[] = [
   { id: 'halftone-dots', name: '半调波点 / halftone dots', placement: 'A 480–720px corner field behind cards; never behind body copy.', description: 'Dot grid whose radius falls off from one corner, the print halftone recipe.', width: 576, height: 336, build: halftone },
   { id: 'hud-lines', name: 'HUD 线条 / HUD lines', placement: 'A full-content-width horizontal strip, top or bottom edge.', description: 'Instrument-panel ticks and crosshairs, drawn as hairlines.', width: 900, height: 240, build: hudLines },
   { id: 'tick-circle', name: '刻度圆 / tick circle', placement: 'A 240–420px corner dial; pair with a metric page.', description: 'A graduated dial: 72 ticks, every sixth one accented.', width: 440, height: 440, build: tickCircle },
-  { id: 'barcode', name: '条形码 / barcode', placement: 'A footer strip or a 160–220px side rail.', description: 'Deterministic bar widths and heights, with rare accent bars.', width: 520, height: 180, build: barcode },
+  { id: 'barcode', name: '条形码 / barcode', placement: 'A footer strip or a 160–220px side rail.', description: 'A true Code 39 pattern (nine elements per character) on an integer module grid, with a quiet zone and one accent rule beneath it.', width: 520, height: 180, build: barcode },
   { id: 'wave-texture', name: '波浪纹理 / wave texture', placement: 'A full-width lower band, 220–260px tall.', description: 'Nine offset sine lines; one accent line carries the motion.', width: 1280, height: 240, build: waves },
   { id: 'repeat-lines', name: '重复线条 / repeating lines', placement: 'An edge band, one third of the page wide.', description: 'Even vertical hairlines with two accent rules marking a field.', width: 640, height: 360, build: repeatLines },
   { id: 'dot-matrix', name: '点阵 / dot matrix', placement: 'A 320–640px corner field; low contrast only.', description: 'A 16×9 dot grid with a deterministic accent dot.', width: 640, height: 360, build: dotMatrix },

@@ -26,6 +26,24 @@ export interface MotifDefinition {
     height: number;
     build: (palette: MotifPalette) => string;
 }
+/** Decorative payload; Code 39 is uppercase, digits, space and `- . $ / + %`. */
+export declare const BARCODE_PAYLOAD = "DSH 2026";
+export interface BarcodeBar {
+    x: number;
+    width: number;
+}
+/**
+ * Encode a payload into bar rectangles on an integer module grid. Bars only:
+ * the spaces between them are the gaps, so the geometry can be rasterised or
+ * drawn as SVG without changing the pattern.
+ */
+export declare function code39Bars(payload: string, options: {
+    module: number;
+    quietModules?: number;
+}): {
+    bars: BarcodeBar[];
+    width: number;
+};
 export declare const MOTIFS: readonly MotifDefinition[];
 export declare const MOTIF_IDS: readonly string[];
 export declare function findMotif(id: string): MotifDefinition | undefined;
