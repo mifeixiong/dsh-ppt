@@ -4,6 +4,7 @@ import { type PptOutline } from './outline.ts';
 import type { SessionOwner } from './session-resources.ts';
 import { type SlideTransitionPlan } from './transitions.ts';
 import { type AnimationPlan } from './animation.ts';
+import { type ShapeSpec } from './svg-ooxml.ts';
 export type PptFallbackMode = 'reject' | 'rasterize-element';
 export interface RasterizedElementRecord {
     page: number;
@@ -27,7 +28,7 @@ export interface PptxPackageInspection {
 export declare function inspectPptxPackage(data: Uint8Array, expectedPages: number): PptxPackageInspection;
 export declare function createPptx(browser: BrowserRuntime, owner: SessionOwner, workspace: string, htmlPathInput: string, outlinePathInput: string, outputPathInput: string, fallbackMode?: PptFallbackMode, signal?: AbortSignal, transitions?: SlideTransitionPlan, animations?: AnimationPlan): Promise<PptCreateResult>;
 export interface WriteDeckPptxOptions {
-    /** The slide tree to write. Both the HTML lane and the outline lane produce one. */
+    /** The slide tree to write. Every authoring lane produces one. */
     ir: DeckIR;
     outline: PptOutline;
     workspace: string;
@@ -38,6 +39,12 @@ export interface WriteDeckPptxOptions {
     animations?: AnimationPlan;
     /** Elements already degraded to images by the caller; the writer only records them. */
     rasterized?: readonly RasterizedElementRecord[];
+    /**
+     * Native DrawingML replacements, keyed by page. Each spec replaces the
+     * placeholder `<p:sp>` whose name matches its id, after pptxgenjs has written
+     * the package. Used by the SVG lane; the other lanes never set it.
+     */
+    nativeShapes?: ReadonlyMap<number, readonly ShapeSpec[]>;
     subject?: string;
 }
 /**

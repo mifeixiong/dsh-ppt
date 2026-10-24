@@ -44,5 +44,9 @@ openspec/
 docs/*
 !docs/agent-workflow.md
 !docs/design-rules.md
+!docs/svg-lane.md
+!docs/ppt-master-notes.md
+!docs/research/
+!docs/research/**
 ppt-output/
 

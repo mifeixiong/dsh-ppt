@@ -54,6 +54,19 @@ export interface ElementIR {
     imagePath?: string;
     svg?: string;
     table?: string[][];
+    /**
+     * Native DrawingML for a shape pptxgenjs cannot express (custom geometry,
+     * in-shape gradient, dash pattern, arrowheads). The writer adds a placeholder
+     * rectangle named `id` and then rewrites that `<p:sp>` in the finished
+     * package from this plan. When absent the shape is a plain preset shape.
+     */
+    nativeShape?: import('./svg-ooxml.ts').ShapeSpec;
+    /**
+     * Suppress renderer line wrapping for this text leaf. The SVG lane breaks
+     * lines itself (one authored line per box), so PowerPoint must not re-wrap a
+     * measured line at its box edge.
+     */
+    noWrap?: boolean;
     unsupportedReason?: string;
 }
 export interface SlideBackgroundIR {

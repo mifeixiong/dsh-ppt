@@ -30,7 +30,7 @@
 | `ppt_themes` | 只读查询内置主题库：目录、单套完整配方（配色、排印规则、签名手法、海报排印方案、生成式纹样、禁用习惯、素材处理、渐变）、按页型展开的逐页视觉方案（构图、疏密、底色角色、标题处理、帧策略、具体色值、可选渐变与 poster_move），以及按 `motif_id` 生成的 SVG 纹样 |
 | `ppt_outline` | 校验大纲与 Art Direction，原子生成 `outline.json` 与 `design-plan.json`；给了 `theme_id` 时同时校验主题一致性 |
 | `html_create` | **精修车道专用**：校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
-| `ppt_create` | 出稿的唯一入口：给 `html_path` 时转换 HTML；**省略 `html_path` 时按 `outline.json` 直接排版出 PPTX（快车道）**；也负责 `finalize_visual_review=true` |
+| `ppt_create` | 出稿的唯一入口：给 `html_path` 时转换 HTML；给 `svg_path` 时把受限 SVG 的自由路径、形状内渐变、虚线与箭头翻译成原生 DrawingML；两个都不给时按 `outline.json` 直接排版出 PPTX（快车道）；也负责 `finalize_visual_review=true` |
 | `ppt_image` | 用真实渲染器打开 PPTX，输出逐页 PNG 与联系表，并可刷新机器质量报告 |
 
 ### 0.1 两条车道：快车道是默认
@@ -45,6 +45,10 @@
 | 适用 | 绝大多数汇报稿；页数多、时间紧 | 需要非模板化版式、严格复刻品牌规范、需要回渲验证 |
 
 两条车道共用同一个 PPTX 写入器与同一套 OOXML 校验，区别只在「页面怎么来」：快车道由代码排，精修车道由模型排。快车道同样遵守画布 1280×720、72/64 页边距、字号层级、正文 4.5:1 对比度等纪律，所以两条车道的稿子看起来是同一个产品。
+
+### 0.2 第三条：SVG 车道（`ppt_create` 带 `svg_path`）
+
+需要自由矢量图形（示意图、流程图、海报化构图、形状内渐变、箭头）时，写一份受限 SVG 到工件目录，再让 `ppt_create` 带 `svg_path` 出稿：图元逐个翻译成 DrawingML（`custGeom`、`gradFill`、`headEnd/tailEnd`），文本按字体度量反解基线，不开浏览器、不栅格化。页数必须与 `outline.json` 一致；不支持的图元会带页号与元素 id 报错，`warnings` 里给出对比度、越界与字体缺失告警。格式与契约见 [SVG 车道](svg-lane.md)。
 
 快车道覆盖大纲允许的全部布局：`cover`/`center`/`full-bleed`/`closing`/`quote-focus` 走海报页，`title-content` 走正文页，`two-column`/`three-column`/`grid`/`split` 走分栏页，`timeline-*`/`process-*` 走步骤页，`chart-focus` 走数据页（同页 `data` 项 ≥3 时画条形对比，否则画指标栅格），`hero-image`/`image-*` 走图文页。
 

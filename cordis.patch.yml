@@ -42,6 +42,9 @@
                 只有用户明确要求手工定制版式、特殊视觉语言或严格复刻品牌规范，或快车道版式确实装不下内容时，才走**精修车道**：
                 ppt_themes→ppt_outline→（冻结素材并read_image检查）→按design-plan.json创作HTML并html_create校验→
                 ppt_create（带html_path）。
+                需要自由矢量图形（示意图、流程图、形状内渐变、虚线箭头、海报化构图）时走**SVG车道**：ppt_outline之后在工件目录写
+                deck.svg（根viewBox 0 0 1280 720，页为g[data-page=N]），再ppt_create（带svg_path，与html_path互斥）；
+                页数必须与大纲一致，filter/mask/clipPath/pattern/use/marker与内联style会带页号和元素id报错，warnings里的对比度与越界告警要在交付前处理。
                 **质检不是默认步骤**：仅当用户要求验证/审稿/回渲检查，或稿件要正式对外交付时，才ppt_image(backend=auto,
                 refresh_quality=true)→read_image逐页审稿→写visual-review.json→ppt_create(finalize_visual_review=true)。
                 没跑这一轮就如实报告overall_status=unverified（各层状态照抄report.json），不得声称“已验证”。

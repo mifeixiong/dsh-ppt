@@ -18,6 +18,7 @@ import { rewritePptxTransitions, type SlideTransitionPlan } from './transitions.
 import { rewritePptxAnimations, type AnimationPlan } from './animation.ts'
 import { planSlideBackground, rewritePptxSlideBackgrounds, type SlideBackgroundPlan } from './slide-background.ts'
 import { rewritePptxTextOpacity, type TextOpacityEntry } from './text-effects.ts'
+import { rewritePptxSlideShapes, type ShapeSpec } from './svg-ooxml.ts'
 
 export type PptFallbackMode = 'reject' | 'rasterize-element'
 
@@ -106,6 +107,26 @@ function imageSource(pathOrUrl: string, workspace: string, artifactRoot: string)
 
 function addNativeElement(pptx: PptxGenJS, slide: ReturnType<PptxGenJS['addSlide']>, element: ElementIR, workspace: string, artifactRoot: string): void {
   const base = baseOptions(element)
+  if (element.nativeShape !== undefined) {
+    // The SVG lane needs freeform geometry, in-shape gradients, dashes and
+    // arrowheads, none of which the pptxgenjs slide API expresses. The writer
+    // adds a same-sized rectangle under the element id and the finished package
+    // is rewritten from the plan afterwards; the placeholder fill keeps the
+    // slide readable even if the rewrite is ever skipped.
+    const spec = element.nativeShape
+    const fill = spec.fill.type === 'solid'
+      ? spec.fill.color
+      : spec.fill.type === 'none' ? undefined : spec.fill.stops[0]?.color
+    const line = spec.stroke?.paint.type === 'solid' ? spec.stroke.paint.color : undefined
+    slide.addShape(pptx.ShapeType.rect, {
+      ...base, objectName: element.id,
+      fill: fill === undefined ? { type: 'none' } : { color: fill },
+      line: spec.stroke === undefined || line === undefined
+        ? { type: 'none' }
+        : { color: line, width: pxToPoints(Math.max(0.75, spec.stroke.widthPx)) },
+    } as never)
+    return
+  }
   if (element.kind === 'text') {
     const runs = (element.runs ?? []).map(run => ({
       text: run.text,
@@ -115,7 +136,12 @@ function addNativeElement(pptx: PptxGenJS, slide: ReturnType<PptxGenJS['addSlide
         ...(run.textDecoration.includes('underline') ? { underline: { style: 'sng' as const } } : {}),
       },
     }))
-    slide.addText((runs.length > 0 ? runs : element.text ?? '') as never, { ...base, ...textOptions(element.style) } as never)
+    slide.addText((runs.length > 0 ? runs : element.text ?? '') as never, {
+      ...base, ...textOptions(element.style),
+      // A leaf the author already broke into lines must not be re-wrapped: the
+      // SVG lane measures each line and places it at its authored baseline.
+      ...(element.noWrap === true ? { wrap: false } : {}),
+    } as never)
     return
   }
   if (element.kind === 'image') {
@@ -283,7 +309,7 @@ export async function createPptx(
 }
 
 export interface WriteDeckPptxOptions {
-  /** The slide tree to write. Both the HTML lane and the outline lane produce one. */
+  /** The slide tree to write. Every authoring lane produces one. */
   ir: DeckIR
   outline: PptOutline
   workspace: string
@@ -294,6 +320,12 @@ export interface WriteDeckPptxOptions {
   animations?: AnimationPlan
   /** Elements already degraded to images by the caller; the writer only records them. */
   rasterized?: readonly RasterizedElementRecord[]
+  /**
+   * Native DrawingML replacements, keyed by page. Each spec replaces the
+   * placeholder `<p:sp>` whose name matches its id, after pptxgenjs has written
+   * the package. Used by the SVG lane; the other lanes never set it.
+   */
+  nativeShapes?: ReadonlyMap<number, readonly ShapeSpec[]>
   subject?: string
 }
 
@@ -305,7 +337,7 @@ export interface WriteDeckPptxOptions {
  * one writer is what makes the fast lane skip *work*, not *guarantees*.
  */
 export async function writeDeckPptx(options: WriteDeckPptxOptions): Promise<PptCreateResult> {
-  const { ir, outline, workspace, artifactRoot, outputPath, signal, transitions, animations } = options
+  const { ir, outline, workspace, artifactRoot, outputPath, signal, transitions, animations, nativeShapes } = options
   const rasterized = options.rasterized ?? []
   // A gradient cannot be expressed through the pptxgenjs slide API, so it is
   // omitted here and injected into the finished package below. A solid color
@@ -359,6 +391,9 @@ export async function writeDeckPptx(options: WriteDeckPptxOptions): Promise<PptC
     let bytes: Uint8Array = written
     bytes = rewritePptxSlideBackgrounds(bytes, gradientPlans)
     bytes = rewritePptxTextOpacity(bytes, opacityPlans)
+    // Freeform geometry, in-shape gradients and line ends are authored directly
+    // as DrawingML: the placeholder shapes are swapped once the package exists.
+    if (nativeShapes !== undefined && nativeShapes.size > 0) bytes = rewritePptxSlideShapes(bytes, nativeShapes)
     if (transitions !== undefined) bytes = rewritePptxTransitions(bytes, transitions)
     if (animations !== undefined) bytes = rewritePptxAnimations(bytes, animations)
     inspectPptxPackage(bytes, outline.length)

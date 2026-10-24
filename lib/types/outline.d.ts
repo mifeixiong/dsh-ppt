@@ -37,9 +37,9 @@ export declare const OutlineContentItemSchema: z.ZodDiscriminatedUnion<[z.ZodObj
 }, z.core.$strict>, z.ZodObject<{
     kind: z.ZodLiteral<"chart">;
     chart_type: z.ZodEnum<{
+        line: "line";
         table: "table";
         area: "area";
-        line: "line";
         waterfall: "waterfall";
         bar: "bar";
         pie: "pie";
@@ -112,9 +112,9 @@ export declare const PptOutlineSchema: z.ZodArray<z.ZodObject<{
     }, z.core.$strict>, z.ZodObject<{
         kind: z.ZodLiteral<"chart">;
         chart_type: z.ZodEnum<{
+            line: "line";
             table: "table";
             area: "area";
-            line: "line";
             waterfall: "waterfall";
             bar: "bar";
             pie: "pie";

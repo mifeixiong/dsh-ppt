@@ -13,6 +13,7 @@ import { planSlideAnimations, TEXT_ANIMATION_DIRECTIONS, TEXT_ANIMATION_EFFECTS,
 import { SLIDE_TRANSITION_DIRECTIONS, SLIDE_TRANSITION_SPEEDS, SLIDE_TRANSITION_TYPES, type SlideTransition, type SlideTransitionPlan } from './transitions.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import { createPptx, createPptxFromOutline } from './pptx.ts'
+import { createPptxFromSvg, type SvgLaneSummary } from './svg-lane.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
 import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
 import type { SessionOwner } from './session-resources.ts'
@@ -220,6 +221,17 @@ const PPTX_OUTPUT = {
       },
     },
     warnings: { type: 'array', items: { type: 'string' }, required: true },
+    // Present only for the SVG lane, so the caller can confirm the vector work
+    // reached the package without reopening it.
+    svg: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        pages: { type: 'integer', required: true },
+        shape_count: { type: 'integer', required: true },
+        text_count: { type: 'integer', required: true },
+        image_count: { type: 'integer', required: true },
+      },
+    },
   },
   additionalProperties: false,
 } as const
@@ -1188,6 +1200,7 @@ function pptxTool(ctx: Context) {
     visualReviewPath: string,
     conversion: { page_count?: unknown; native_element_count?: unknown; rasterized_elements?: unknown },
     motion?: MotionSummary,
+    svg?: SvgLaneSummary,
   ) => {
     const pageCount = typeof conversion.page_count === 'number' ? conversion.page_count : report.artifacts.pptx_previews.length
     const nativeElementCount = typeof conversion.native_element_count === 'number' ? conversion.native_element_count : 0
@@ -1195,6 +1208,7 @@ function pptxTool(ctx: Context) {
     const warnings = Object.values(report.layers).flatMap(layer => layer.findings)
       .filter(finding => finding.severity === 'warning')
       .map(finding => `${finding.code}${finding.page === undefined ? '' : ` (page ${finding.page})`}: ${finding.message}`)
+    const svgWarnings = svg?.warnings ?? []
     return {
       pptx_path: report.pptx_path,
       page_count: pageCount,
@@ -1210,15 +1224,22 @@ function pptxTool(ctx: Context) {
       visual_review_path: visualReviewPath,
       preview_paths: report.artifacts.pptx_previews,
       ...(motion === undefined ? {} : { motion }),
-      warnings,
+      warnings: [...warnings, ...svgWarnings],
+      ...(svg === undefined ? {} : {
+        svg: {
+          pages: svg.pages, shape_count: svg.shape_count,
+          text_count: svg.text_count, image_count: svg.image_count,
+        },
+      }),
       overall_status: report.overall_status,
     }
   }
   return defineTool({
     name: 'ppt_create',
-    description: 'Build an editable PPTX. Pass html_path to convert a validated HTML deck; omit it to lay the deck out directly from outline.json — the fast lane: no HTML authoring, no browser render, one call from outline to PPTX. OOXML is validated before the file is committed either way.',
+    description: 'Build an editable PPTX. Pass html_path to convert a validated HTML deck, svg_path to convert a constrained SVG deck into native vector shapes, or omit both to lay the deck out directly from outline.json — the fast lane: no HTML authoring, no browser render. OOXML is validated before the file is committed either way.',
     parameters: {
       html_path: { type: 'string', description: 'Workspace-relative deck.html path returned by html_create. Omit to use the fast lane, which lays out the pages deterministically from outline.json (and design-plan.json) instead.' },
+      svg_path: { type: 'string', description: 'Workspace-relative deck.svg path authored in the SVG lane: one 1280x720 document whose pages are <g data-page="N"> groups. Freeform paths, gradients, dashes and arrowheads become native DrawingML. Mutually exclusive with html_path; page count must match the outline.' },
       outline_path: { type: 'string', required: true, description: 'Workspace-relative outline.json path returned by ppt_outline.' },
       output_path: { type: 'string', required: true, description: 'New workspace-relative .pptx path in the same artifact directory.' },
       fallback_mode: {
@@ -1272,6 +1293,9 @@ function pptxTool(ctx: Context) {
     async execute(args, exec) {
       const { owner, workspace } = browserExecution(exec)
       const motion = buildMotionPlans(args.effects)
+      if (args.html_path !== undefined && args.svg_path !== undefined) {
+        throw new PptError('PPT_CREATE_INPUT_INVALID', 'html_path and svg_path are mutually exclusive; pass one authoring source')
+      }
       const normalizedOutput = workspaceRelative(workspace, await resolveWorkspacePath(workspace, args.output_path, {
         ...(args.finalize_visual_review === true ? { mustExist: true as const, kind: 'file' as const } : {}),
       }))
@@ -1281,11 +1305,30 @@ function pptxTool(ctx: Context) {
       if (args.finalize_visual_review === true) {
         await Promise.all([
           ...(args.html_path === undefined ? [] : [resolveWorkspacePath(workspace, args.html_path, { mustExist: true, kind: 'file' })]),
+          ...(args.svg_path === undefined ? [] : [resolveWorkspacePath(workspace, args.svg_path, { mustExist: true, kind: 'file' })]),
           resolveWorkspacePath(workspace, args.outline_path, { mustExist: true, kind: 'file' }),
         ])
         const report = await applyVisualReview(workspace, reportPath, visualReviewPath)
         const conversion = report.conversion ?? {}
         return result(report, reportPath, visualReviewPath, conversion, motion.summary)
+      }
+      if (args.svg_path !== undefined) {
+        // SVG lane: vector art in, native DrawingML out. Parsing and layout are
+        // static, so this lane needs no browser and no renderer either.
+        const conversion = await createPptxFromSvg({
+          workspace, svg_path: args.svg_path, outline_path: args.outline_path, output_path: normalizedOutput,
+          signal: exec.signal,
+          ...(motion.transitions === undefined ? {} : { transitions: motion.transitions }),
+          ...(motion.animations === undefined ? {} : { animations: motion.animations }),
+        })
+        const report = await ctx.pptRuntime.quality.evaluateStructural(
+          workspace, conversion.pptx_path, reportPath, visualReviewPath, conversion.page_count,
+          await ctx.pptRuntime.canReviewImages(exec.agent), {
+            page_count: conversion.page_count, native_element_count: conversion.native_element_count,
+            rasterized_elements: conversion.rasterized_elements, source: 'svg-lane', svg: conversion.svg,
+          }, exec.signal,
+        )
+        return result(report, reportPath, visualReviewPath, report.conversion ?? {}, motion.summary, conversion.svg)
       }
       if (args.html_path === undefined) {
         // Fast lane: outline -> PPTX in one call. The report records the two

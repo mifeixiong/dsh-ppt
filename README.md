@@ -40,7 +40,8 @@
 
 **DSH PPT 让 PPT 制作回归内容本身：**
 
-- ⚡ **两步出稿的快车道**：默认路线是 `ppt_outline` → `ppt_create`——大纲定内容与 Art Direction，插件按 `style.layout` 与主题配色确定性排版，不写 HTML、不开浏览器、不跑回渲，十页稿几百毫秒落盘。要手工版式时再切到精修车道（`html_create` + HTML 设计稿），两条车道共用同一个 PPTX 写入器与 OOXML 校验。
+- ⚡ **两步出稿的快车道**：默认路线是 `ppt_outline` → `ppt_create`——大纲定内容与 Art Direction，插件按 `style.layout` 与主题配色确定性排版，不写 HTML、不开浏览器、不跑回渲，十页稿几百毫秒落盘。要手工版式时再切到精修车道（`html_create` + HTML 设计稿），需要自由矢量图形时走 SVG 车道（`ppt_create` 带 `svg_path`），三条车道共用同一个 PPTX 写入器与 OOXML 校验。
+- 🧩 **SVG 车道：矢量稿直接变原生形状**：给 `ppt_create` 一份受限 SVG（`<path>`/`<polygon>`/`<rect rx>`/渐变/虚线/箭头/文本/图片），它把每个图元翻译成 DrawingML——自由路径是 `custGeom`，渐变是形状内 `gradFill`，箭头是 `headEnd/tailEnd`，文本按字体度量反解基线。不开浏览器、不栅格化，图元在 PowerPoint 里仍是可改的对象。格式、契约与边界见 [SVG 车道](docs/svg-lane.md)。
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
 - 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。另有 15 类生成式 SVG 纹样（同心圆、半调波点、HUD、刻度圆、条形码、波浪、点阵、多边形网格、等高线、经纬球、射线等）可按主题配色现取现用。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
@@ -376,6 +377,37 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 - 返回值带 `uninstall_hint`，便于手工卸载。
 
 关于把字体**嵌进 PPTX 文件本身**：PowerPoint 的原生嵌入部件（`ppt/fonts/*.fntdata`）是 EOT 容器，内部为 MicroType Express 压缩的 TrueType 数据，本插件不生成该格式。需要跨机器保真时，请用 `ppt_fonts` 把字体装到目标机器，或随产物分发字体文件后在目标机器安装。
+
+## SVG 车道：矢量稿直接变原生形状
+
+三条车道按"页面从哪来"区分：
+
+| | 快车道（默认） | 精修车道（HTML） | SVG 车道（矢量） |
+| :--- | :--- | :--- | :--- |
+| 调用 | `ppt_outline` → `ppt_create` | `ppt_outline` → `html_create` → `ppt_create` | `ppt_outline` → 写 `deck.svg` → `ppt_create({svg_path})` |
+| 页面来源 | 插件按 `style.layout` 确定性排版 | 模型写 1280×720 静态 HTML，浏览器量盒模型 | 模型写受限 SVG，静态解析成 DrawingML |
+| 形状能力 | 矩形 / 圆角矩形 / 椭圆 / 纯色 | 盒模型、纯色、原生渐变底 | 自由路径、多边形、形状内渐变、虚线、箭头、精确文字定位 |
+| 依赖 | 无浏览器、无回渲 | 浏览器内核 | 无浏览器、无回渲 |
+| 适合 | 绝大多数汇报稿 | 非模板化版式、严格品牌规范 | 示意图、流程图、数据图形、海报化构图 |
+
+`deck.svg` 的最小形态：
+
+```xml
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <defs>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1B33"/><stop offset="1" stop-color="#1E4B8F"/>
+    </linearGradient>
+  </defs>
+  <g data-page="1" data-background="#081120">
+    <rect x="72" y="64" width="520" height="300" rx="12" fill="url(#hero)"/>
+    <path d="M 760 420 L 900 480 L 1040 420" fill="none" stroke="#FFFFFF" stroke-width="4" data-tail="triangle"/>
+    <text x="72" y="470" font-family="Liter" font-size="44" font-weight="700" fill="#FFFFFF">矢量标题</text>
+  </g>
+</svg>
+```
+
+页数必须与 `outline.json` 一致；不支持的图元（`filter`/`mask`/`clipPath`/`pattern`/`use`/`marker`）会带页号与元素 id 报错，而不是静默丢层。完整契约、映射表、诊断码与已知边界见 **[SVG 车道](docs/svg-lane.md)**，调查笔记见 **[ppt-master 实现调查](docs/ppt-master-notes.md)**。
 
 ## 使用场景
 

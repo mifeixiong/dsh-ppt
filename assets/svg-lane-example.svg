@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">
+  <!-- One page of the SVG lane. Copy next to an outline.json and pass it as
+       ppt_create({ svg_path: "…/deck.svg" }). Swap the font family for one the
+       target machine really has; ppt_fonts lists the approved registry. -->
+  <defs>
+    <linearGradient id="hero" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0B1B33"/>
+      <stop offset="1" stop-color="#1E4B8F"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#1E4B8F"/>
+      <stop offset="1" stop-color="#7FB2FF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5">
+      <stop offset="0" stop-color="#2F6BFF"/>
+      <stop offset="1" stop-color="#081120"/>
+    </radialGradient>
+  </defs>
+
+  <g data-page="1" data-background="#081120">
+    <!-- Soft radial glow behind the hero card. -->
+    <circle cx="1010" cy="210" r="220" fill="url(#glow)" opacity="0.55"/>
+
+    <!-- Hero card: rounded preset shape with an in-shape gradient. -->
+    <rect x="72" y="72" width="560" height="300" rx="16" fill="url(#hero)" stroke="#2F6BFF" stroke-width="2"/>
+    <text x="108" y="182" font-family="MiSans" font-size="56" font-weight="700" fill="#FFFFFF">矢量车道</text>
+    <text x="108" y="246" font-family="MiSans" font-size="24" fill="#BFD3FF">路径 · 渐变 · 虚线 · 箭头</text>
+    <text x="108" y="300" font-family="MiSans" font-size="24" fill="#BFD3FF">全部仍是可编辑的原生形状</text>
+
+    <!-- Freeform curve with a dash pattern and an arrowhead. -->
+    <path d="M 120 520 C 260 430 380 500 500 400 S 720 320 840 360"
+          fill="none" stroke="#7FB2FF" stroke-width="6" stroke-dasharray="12 8" data-tail="triangle"/>
+
+    <!-- Filled triangle, drawn with a relative path. -->
+    <path d="M 900 470 l 90 60 l -90 60 z" fill="#2F6BFF"/>
+
+    <!-- Three gradient bars with centred labels. -->
+    <rect x="72" y="392" width="120" height="96" rx="8" fill="url(#bar)"/>
+    <text x="132" y="520" font-family="MiSans" font-size="18" fill="#B6C2D9" text-anchor="middle">Q1</text>
+    <rect x="212" y="356" width="120" height="132" rx="8" fill="url(#bar)"/>
+    <text x="272" y="520" font-family="MiSans" font-size="18" fill="#B6C2D9" text-anchor="middle">Q2</text>
+    <rect x="352" y="420" width="120" height="68" rx="8" fill="url(#bar)"/>
+    <text x="412" y="520" font-family="MiSans" font-size="18" fill="#B6C2D9" text-anchor="middle">Q3</text>
+  </g>
+</svg>
