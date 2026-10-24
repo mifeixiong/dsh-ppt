@@ -26,7 +26,7 @@ ppt_create({ svg_path, outline_path, output_path })
 
 ## 3. 文件格式
 
-一份文档，根是 `<svg>`，页是顶层 `<g data-page="N">`：
+一份文档，根是 `<svg>`，页是顶层 `<g data-page="N">`。仓库里有一份可直接使用的完整样例：[assets/svg-lane-example.svg](../assets/svg-lane-example.svg)。
 
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720">

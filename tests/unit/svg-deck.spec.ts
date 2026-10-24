@@ -586,3 +586,25 @@ describe('svg xml parser', () => {
     expect(error.message).toContain('invalid XML')
   })
 })
+
+describe('shipped example deck', () => {
+  it('parses the documented example under the approved fonts', async () => {
+    const { readFile } = await import('node:fs/promises')
+    const source = await readFile(new URL('../../assets/svg-lane-example.svg', import.meta.url), 'utf8')
+    const parsed: SvgDeckIR = await parseSvgDeck(source, options)
+    expect(parsed.pages).toHaveLength(1)
+    const page = parsed.pages[0]!
+    expect(page.background).toBe('081120')
+    const kinds = page.elements.map(element => element.kind)
+    expect(kinds).toContain('shape')
+    expect(kinds).toContain('text')
+    // Three bars, two gradient cards and two paths are shapes; the glow circle
+    // is a preset ellipse with a radial gradient.
+    const shapes = page.elements.filter((element): element is SvgShapeElement => element.kind === 'shape')
+    expect(shapes.length).toBeGreaterThanOrEqual(7)
+    expect(shapes.some(shape => shape.spec.geometry.kind === 'preset' && shape.spec.geometry.preset === 'ellipse')).toBe(true)
+    expect(shapes.some(shape => shape.spec.fill.type === 'radial')).toBe(true)
+    const texts = page.elements.filter((element): element is SvgTextElement => element.kind === 'text')
+    expect(texts.some(text => text.lines.some(line => line.runs.some(run => run.text === '矢量车道')))).toBe(true)
+  })
+})
