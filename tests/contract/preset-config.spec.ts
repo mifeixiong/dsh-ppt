@@ -81,7 +81,10 @@ describe('PPT preset row configuration', () => {
     const persona = (preset!.config?.plugins as Row[]).find(row => row.id === 'persona')
     expect(persona?.config).toHaveProperty('prefix')
     expect(persona?.config).not.toHaveProperty('text')
-    expect(String(persona?.config?.prefix)).toContain('{{cwd}}')
+    // DSH registers only provider/model as prompt variables; `{{cwd}}` is not one
+    // of them and fails prompt assembly before any model request.
+    expect(String(persona?.config?.prefix)).toContain('运行时上下文')
+    expect(String(persona?.config?.prefix)).not.toContain('{{cwd}}')
   })
 
   it('names a default the registry can resolve for headless', () => {
