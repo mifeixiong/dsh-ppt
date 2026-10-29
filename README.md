@@ -423,12 +423,26 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 **为什么是「继承」而不是「内置」**：DSH 的工具注册表一个作用域一张表，**同层**重复注册同名工具会直接失败（`tool "ppt_create" is already registered in this scope`），而**作用域注册会遮蔽全局同名工具**。所以组合方式是：
 
 - `dsh-office-tools` 照旧由 profile 全局挂载，标准模式仍有完整的 8 项 Office 工具；
-- PPT 模式的预设**不**挂第二份 office 工具，只把它们列进允许面（`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`），因此不会被预设的 `restrict()` 当外部工具剪掉；
+- PPT 模式的预设**不**挂第二份 office 工具，只把它们列进允许面（`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`）；
 - `ppt_create` 在 PPT 模式里被本插件的出稿管线遮蔽——**出稿仍然只有一条路径**，不会出现两套 PPTX 生成器打架；office 的写入器只在其它预设里可用。
 
-启用方式：把 `dsh-office-tools` 挂进 profile 的 `dsh.profile.bundles`（如 `github:kw78/dsh-office-tools`）即可，它自带的 `enablePptTools` 保持默认 `true`。缺席时（例如 headless 只挂 dsh-ppt）没有文档车道，启动诊断会如实写一行 `office document lane not mounted`，不会把缺席当故障；只挂了一半时写 `partial (n/7; missing …)` 并在日志里点名缺失项。
+合并前这两半为什么没接上，取决于**组合顺序**（预设是在其行注册时就即时挂载的，而 deny 列表是那一刻全局视图的快照）：
 
-车道边界：`ppt_read` 返回的是**文字与几何**，不是渲染证据——视觉判断仍以 `ppt_image` 生成的 PNG 为准；`ppt_read` 也永远不能改文件。
+| office bundle 的位置 | 现象 |
+| :--- | :--- |
+| 在本插件之后（本机 desktop profile 就是这样，`dsh-office-tools` 排在 bundles 末尾） | 工具一直可见可调，但审计把它们记成「外来工具」：每次 `tools/change` 一条警告，`tools` 启动诊断判 `failed` |
+| 在本插件之前 | 进了 deny 列表被剪掉；deny 是按名字生效的，之后再注册同名工具也一直被拒 |
+
+两种现象在把车道纳入允许面之后都消失了。
+
+启用方式：把 `dsh-office-tools` 挂进 profile 的 `dsh.profile.bundles`（如 `github:kw78/dsh-office-tools`）即可。**它自带的 `enablePptTools` 必须保持 `true`**：`ppt_read` 与 `ppt_create` 是同一个注册函数里的两项，关掉它虽然能避开与 `ppt_create` 的争名，但会连 `ppt_read` 一起消失，车道变成 `partial (6/7)`。dsh-office-tools 自己的 README 建议「与专门的 PPT 插件共存时设成 false」，那是对没有作用域遮蔽的旧版 DSH 的说法，在本插件 + DSH 0.2 下不需要。
+
+缺席时（例如 headless 只挂 dsh-ppt）没有文档车道，启动诊断写 `office document lane not mounted (no dsh-office-tools in this composition)`，状态仍是 ready；只挂了一半时写 `partial (n/7; missing …)`，`tools` 诊断降为 `degraded` 并在日志里点名缺失项。
+
+两条要知道的边界：
+
+1. 车道成员是**按名字**认的（注册表不暴露工具归属）。这七个名字从此不再可能出现在「外来工具」告警里，别的插件注册同名工具也会被当成车道；上游改名或改语义时车道会静默变 partial，只能靠上面的 `degraded` 和日志发现。profile 里 `dsh-office-tools` **没有 pin 到具体 commit**，升级上游属于这一栏的风险。
+2. `ppt_read` 返回的是**文字与几何**，不是渲染证据——视觉判断仍以 `ppt_image` 生成的 PNG 为准；`ppt_read` 也永远不能改文件。
 
 ---
 

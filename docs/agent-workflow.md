@@ -4,7 +4,7 @@
 
 分工形态：一个 agent 搜图、一个 agent 找材料、一个 agent 出框架（大纲 + Art Direction）、主 agent 整合并把 PPTX 交付出去。
 
-本文只描述插件里真实存在的工具面。文档里的每个工具名都来自 `src/schemas.ts` 的 `PPT_MODE_TOOL_NAMES`，逐字核对过。
+本文只描述插件里真实存在的工具面。核心表的每个工具名都来自 `src/schemas.ts` 的 `PPT_CORE_TOOL_NAMES`，文档车道那 7 个来自 `PPT_OFFICE_TOOL_NAMES`（并集即允许面 `PPT_MODE_TOOL_NAMES`），逐字核对过。
 
 ---
 

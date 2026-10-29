@@ -385,12 +385,26 @@ A deck rarely travels alone: it comes with a script (.docx), a figures table (.x
 Why the lane is *inherited* rather than bundled: the DSH tool registry keeps one table per scope and refuses a second registration of the same name **inside one layer** (`tool "ppt_create" is already registered in this scope`), while a scoped registration shadows a global one. So:
 
 - `dsh-office-tools` stays mounted globally by the profile, and the standard preset keeps all eight office tools;
-- the PPT preset does **not** mount a second copy; it lists those names in its allowed surface (`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`) so its own `restrict()` no longer prunes them as foreign tools;
+- the PPT preset does **not** mount a second copy; it lists those names in its allowed surface (`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`);
 - `ppt_create` is shadowed inside PPT mode by this plugin's production pipeline, so there is still exactly one deck producer there; the office writer remains available in every other preset.
 
-Enable it by adding `dsh-office-tools` to the profile's `dsh.profile.bundles` (for example `github:kw78/dsh-office-tools`) and leaving its `enablePptTools` at the default `true`. Without it (headless mounts dsh-ppt only) there is no document lane, and startup diagnostics say so — `office document lane not mounted` is not a failure; a half-mounted lane reads `partial (n/7; missing …)` and is also logged.
+Why the two halves were not joined before this change depended on **composition order** — a preset is mounted eagerly when its row registers, and the deny list is a snapshot of the global view at that moment:
 
-Boundary: `ppt_read` returns text and geometry, not render evidence — visual judgement still comes from `ppt_image` PNGs, and `ppt_read` never writes.
+| Where the office bundle sits | Symptom before the merge |
+| :--- | :--- |
+| after this plugin (what the shipped desktop profile does: `dsh-office-tools` is last in `bundles`) | the tools were visible all along, but the audit filed them as *foreign*: a warning on every `tools/change`, and the `tools` startup diagnostic said `failed` |
+| before this plugin | they entered the deny list and were pruned; deny is a name predicate, so registering the name again later stays denied too |
+
+Both symptoms are gone once the lane is part of the allowed surface.
+
+Enable it by adding `dsh-office-tools` to the profile's `dsh.profile.bundles` (for example `github:kw78/dsh-office-tools`). Its own **`enablePptTools` must stay `true`**: `ppt_read` and `ppt_create` come from one registration call, so turning it off removes `ppt_read` as well and the lane becomes `partial (6/7)`. The office plugin's README suggests setting it to `false` to coexist with a dedicated presentation plugin — that advice predates scoped shadowing and is unnecessary with this plugin on DSH 0.2.
+
+Without it (headless mounts dsh-ppt only) there is no document lane: startup diagnostics read `office document lane not mounted (no dsh-office-tools in this composition)` and stay `ready`. A half-mounted lane reads `partial (n/7; missing …)`, turns the `tools` check into `degraded`, and names the missing tools in the log.
+
+Two boundaries worth knowing:
+
+1. Lane membership is recognised **by name** (the registry exposes no tool ownership). Those seven names can no longer raise the "foreign tool" warning, and another plugin registering one of them would be counted as the lane; an upstream rename silently degrades the lane to `partial`, visible only through that `degraded` check and the log. The profile also installs `dsh-office-tools` **without a pinned commit**, which is where that risk comes from.
+2. `ppt_read` returns text and geometry, not render evidence — visual judgement still comes from `ppt_image` PNGs, and `ppt_read` never writes.
 
 ---
 

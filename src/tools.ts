@@ -1492,6 +1492,19 @@ export function apply(ctx: Context): void {
   // tools must stay allowed instead of being denied as foreign: they are the
   // document half of the merged surface. See schemas.ts for why this package
   // inherits them rather than mounting a second registration.
+  //
+  // The deny list below is a *snapshot of the global view at apply() time*, and
+  // presets are mounted eagerly when their row registers (agent-preset-registry
+  // `register → activate → mountPreset`). Which symptom an office bundle caused
+  // therefore depended on composition order:
+  //   - office row registered BEFORE this preset → its tools were in the
+  //     snapshot → denied, and a deny is a name predicate, so re-registering
+  //     the name later stays denied too;
+  //   - office row registered AFTER (the shipped desktop profile lists
+  //     `dsh-office-tools` last) → never denied; the tools were visible and the
+  //     audit reported them as `unexpected`, which turned the `tools` startup
+  //     diagnostic into `failed` and logged a warning on every `tools/change`.
+  // Both symptoms are gone now that the lane is part of `allow`.
   const allow = new Set<string>(PPT_MODE_TOOL_NAMES)
   // The reserved PTC transport is skipped here on purpose: it is synthesized
   // into the view rather than registered, `tools.register()` refuses the name,
@@ -1579,6 +1592,13 @@ export function apply(ctx: Context): void {
       // inheritance: a host that mounted no office bundle (headless) simply has
       // no document lane, and that is a supported composition rather than an
       // incomplete preset.
+      //
+      // The lane is recognised *by name* — the registry exposes no owner field,
+      // so this is the only handle available. Two consequences worth knowing:
+      // a foreign plugin registering one of those seven names is indistinguishable
+      // from the office lane (it is allowed either way, and it will not show up
+      // in `unexpected`), and a renamed upstream tool silently turns the lane
+      // into a partial one, which the diagnostic now reports as `degraded`.
       const missing = PPT_CORE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
       const officeVisible = PPT_OFFICE_TOOL_NAMES.filter(toolName => visible.includes(toolName))
       const officeMissing = PPT_OFFICE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))

@@ -310,7 +310,7 @@ describe('PPT preset contract', () => {
     })
   })
 
-  it('records missing read_image instead of treating 18 tools as healthy', () => {
+  it('records missing read_image instead of treating the rest of the core as healthy', () => {
     const fixture = toolContext(PPT_NATIVE_TOOL_NAMES.filter(name => name !== 'read_image'))
     applyTools(fixture.context as never)
     expect(fixture.getRecorded()).toMatchObject({ missing: ['read_image'] })
@@ -355,6 +355,26 @@ describe('PPT preset contract', () => {
       missing: [],
       unexpected: [],
       office: { available: false, visible: [], missing: [...PPT_OFFICE_TOOL_NAMES] },
+    })
+    expect(fixture.getWarnings()).toEqual([])
+  })
+
+  it('picks up an office lane registered after the preset mounted (the shipped desktop order)', async () => {
+    const fixture = toolContext()
+    applyTools(fixture.context as never)
+    // The deny list is a snapshot of the global view at apply() time, so an
+    // office bundle mounted later is neither denied nor known: the deferred
+    // audit has to notice it and flip the lane from absent to complete.
+    expect(fixture.getRecorded()).toMatchObject({ office: { available: false } })
+
+    for (const name of PPT_OFFICE_TOOL_NAMES) fixture.addExternalTool(name)
+    fixture.triggerToolChange()
+    await settleMicrotasks()
+
+    expect(fixture.getRecorded()).toMatchObject({
+      missing: [],
+      unexpected: [],
+      office: { available: true, visible: [...PPT_OFFICE_TOOL_NAMES], missing: [] },
     })
     expect(fixture.getWarnings()).toEqual([])
   })

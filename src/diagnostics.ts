@@ -178,17 +178,26 @@ export async function diagnosePptRuntime(runtime: DiagnosticRuntime, agent?: Age
     : { id: 'platform', status: 'failed', message: `Unsupported platform: ${process.platform}` })
   const surface = runtime.toolSurface
   // The office lane is reported next to the core surface instead of counting
-  // toward it: a host without an office bundle still has a healthy preset, and
-  // a half-mounted one is a degradation worth naming.
+  // toward it: a host without an office bundle still has a healthy preset. A
+  // half-mounted lane is a real degradation, so it downgrades this check
+  // instead of hiding behind a `ready` that only the message contradicts.
   const office = surface?.office
   const officeSummary = office === undefined || !office.available
-    ? 'office document lane not mounted'
+    ? 'office document lane not mounted (no dsh-office-tools in this composition)'
     : office.missing.length === 0
       ? `office document lane complete (${office.visible.length}/${PPT_OFFICE_TOOL_NAMES.length})`
       : `office document lane partial (${office.visible.length}/${PPT_OFFICE_TOOL_NAMES.length}; missing ${office.missing.join(', ')})`
-  checks.push(surface !== undefined && surface.missing.length === 0 && surface.unexpected.length === 0
-    ? { id: 'tools', status: 'ready', message: `All ${PPT_CORE_TOOL_NAMES.length} PPT core tools are visible; ${officeSummary}`, details: office === undefined ? {} : { office } }
-    : { id: 'tools', status: 'failed', message: 'PPT mode tool surface is incomplete', details: surface === undefined ? { missing: ['surface not mounted'] } : { ...surface } })
+  const coreIncomplete = surface === undefined || surface.missing.length > 0 || surface.unexpected.length > 0
+  const officePartial = office !== undefined && office.available && office.missing.length > 0
+  const toolsStatus: DiagnosticStatus = coreIncomplete ? 'failed' : officePartial ? 'degraded' : 'ready'
+  checks.push({
+    id: 'tools',
+    status: toolsStatus,
+    message: coreIncomplete ? 'PPT mode tool surface is incomplete' : `All ${PPT_CORE_TOOL_NAMES.length} PPT core tools are visible; ${officeSummary}`,
+    details: coreIncomplete
+      ? (surface === undefined ? { missing: ['surface not mounted'] } : { ...surface })
+      : (office === undefined ? {} : { office }),
+  })
   const browser = await discoverBrowserExecutable(runtime.options.browserExecutable)
   checks.push(browser.executable === undefined
     ? { id: 'browser', status: 'failed', message: 'No compatible Chromium/Chrome executable was found', details: { checked: browser.checked } }
