@@ -43,6 +43,7 @@
 - ⚡ **两步出稿的快车道**：默认路线是 `ppt_outline` → `ppt_create`——大纲定内容与 Art Direction，插件按 `style.layout` 与主题配色确定性排版，不写 HTML、不开浏览器、不跑回渲，十页稿几百毫秒落盘。要手工版式时再切到精修车道（`html_create` + HTML 设计稿），需要自由矢量图形时走 SVG 车道（`ppt_create` 带 `svg_path`），三条车道共用同一个 PPTX 写入器与 OOXML 校验。
 - 🧩 **SVG 车道：矢量稿直接变原生形状**：给 `ppt_create` 一份受限 SVG（`<path>`/`<polygon>`/`<rect rx>`/渐变/虚线/箭头/文本/图片），它把每个图元翻译成 DrawingML——自由路径是 `custGeom`，渐变是形状内 `gradFill`，箭头是 `headEnd/tailEnd`，文本按字体度量反解基线。不开浏览器、不栅格化，图元在 PowerPoint 里仍是可改的对象。格式、契约与边界见 [SVG 车道](docs/svg-lane.md)。
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
+- ✏️ **改稿只改当页**：`ppt_update(pages=[...])` 只重排你改过的那几页，把它们的 OOXML 拼回原文件——其余页字节不动，包括你在 PowerPoint 里手改过的页。证据落在 `deck-patch.json`（逐页改前/改后哈希、媒体增删）。页数增减才退回整份重建，并在结果里标 `mode=full`。
 - 📄 **与 `dsh-office-tools` 合成的文档车道**：PPT 模式不只出稿——宿主挂了 office bundle 时，同一会话里还多出 7 项文档工具：`word_*` 写讲稿与评审意见，`excel_*` 写数据表与口径对照，`ppt_read` 读既有 PPTX 的段落/表格/备注/元素几何。出稿仍只有一条路径（`ppt_create` 在预设作用域里遮蔽 office 的同名写入器）。见 [Office 文档车道](#office-文档车道和-ppt-一起交付附件)。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
 - 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。另有 15 类生成式 SVG 纹样（同心圆、半调波点、HUD、刻度圆、条形码、波浪、点阵、多边形网格、等高线、经纬球、射线等）可按主题配色现取现用。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
@@ -103,7 +104,7 @@ dsh --profile headless "为管理层制作一份6页的AI项目季度复盘与�
 
 | 项目 | 要求 | 说明 |
 | :--- | :--- | :--- |
-| DeepSeek Harness | `0.2.0-rc.2` 或更高 | 插件声明 19 项 `@deepseek-ai/*` 对等依赖（其中 18 项为 `^0.2.0-rc.2`，`@deepseek-ai/cordis` 为 `^4.0.1`）。版本不匹配时插件被拒绝加载，PPT 模式与 21 项核心工具都不会挂载 |
+| DeepSeek Harness | `0.2.0-rc.2` 或更高 | 插件声明 19 项 `@deepseek-ai/*` 对等依赖（其中 18 项为 `^0.2.0-rc.2`，`@deepseek-ai/cordis` 为 `^4.0.1`）。版本不匹配时插件被拒绝加载，PPT 模式与 22 项核心工具都不会挂载 |
 | Node.js | `>= 20.19.0` | `package.json` 的 `engines.node` 声明 |
 | 操作系统 | Windows / macOS / Linux | `package.json` 的 `os` 只声明 `win32`、`darwin`、`linux`；其它平台在插件加载期抛 `PPT_PLATFORM_UNSUPPORTED` |
 | Chromium 系浏览器 | 本机已安装 Chrome、Chromium 或 Edge | HTML 校验渲染、`browser_visit` 与 HTML 预览截图都靠它。不需要 `playwright install`：插件只探测本机可执行文件，再用 `chromium.launch({ executablePath })` 显式启动 |
@@ -410,6 +411,34 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 页数必须与 `outline.json` 一致；不支持的图元（`filter`/`mask`/`clipPath`/`pattern`/`use`/`marker`）会带页号与元素 id 报错，而不是静默丢层。完整契约、映射表、诊断码与已知边界见 **[SVG 车道](docs/svg-lane.md)**，调查笔记见 **[ppt-master 实现调查](docs/ppt-master-notes.md)**。
 
+## 改稿：只改当页
+
+"把第 3 页的转化率改成 42%" 过去意味着重跑整份：`ppt_outline` 全覆盖 + `ppt_create` 重排全部页面，连你昨晚在 PowerPoint 里手工挪过的那页一起覆盖。
+
+现在改稿走一条独立路径：
+
+```
+编辑 outline.json 的第 3 页  →  ppt_update(pages=[3])
+```
+
+`ppt_update` 用**同一个确定性写入器**按改后的内容重排这几页，只把这些页的 OOXML 拼回现有文件：
+
+| 拼回的部件 | 处理 |
+| :--- | :--- |
+| `ppt/slides/slideN.xml` | 用新页面替换 |
+| `ppt/slides/_rels/slideN.xml.rels` | 跟着替换，图片引用重指向 |
+| `ppt/notesSlides/notesSlideN.xml` | 跟着替换（备注与页面同源） |
+| `ppt/media/*` | 新图按内容哈希去重后加入；不再被任何页引用的旧图剪掉 |
+| 其它所有部件 | **字节不变**，包括未改页、母版、主题、你在 PowerPoint 里的手改 |
+
+结果里直接给出 `mode`（`patch` / `full`）、`updated_pages`、`unchanged_pages`、媒体增删，并写 `deck-patch.json`（逐页改前/改后 SHA-256）——"只改了第 3 页"是可以被核对的，不是口头承诺。
+
+三条边界：
+
+1. **页数不能就地增减**：outline 页数与稿件不一致时整份重建，结果标 `mode=full` 并在 `warnings` 里说明（插入/删除页属于重排，不是改稿）。
+2. **HTML 精修车道**的页被快车道重排后会与相邻页风格不一致：`deck.html` 存在时会给出警告，要么整份 `ppt_create`，要么接受重排。
+3. `report.json` 不会被悄悄改写：改稿后它仍描述旧字节，结果里 `report_status=stale` 并提示需要渲染证据时重跑 `ppt_image`。
+
 ## Office 文档车道：和 PPT 一起交付附件
 
 一场汇报很少只有一份 PPTX：通常还要一份讲稿（.docx）、一张口径对照表（.xlsx），或者需要先读懂客户给的旧 PPTX。这些能力由 **`dsh-office-tools`** 提供，本插件不重复实现，而是把它们纳入 PPT 模式的**允许面**——宿主挂了那个 bundle，PPT 模式里就同时出现 7 项文档工具：
@@ -465,7 +494,7 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 ## 多 Agent 协作流程
 
-一份 PPT 也可以由多个 agent 分工完成：一个搜图、一个找材料、一个出框架（大纲 + Art Direction）、主 agent 整合并交付。插件只提供固定的 21 项核心工具（宿主挂载 `dsh-office-tools` 时再加 7 项 Office 文档工具）与一套强校验的工件契约，分工由会话层编排。
+一份 PPT 也可以由多个 agent 分工完成：一个搜图、一个找材料、一个出框架（大纲 + Art Direction）、主 agent 整合并交付。插件只提供固定的 22 项核心工具（宿主挂载 `dsh-office-tools` 时再加 7 项 Office 文档工具）与一套强校验的工件契约，分工由会话层编排。
 
 - 🔍 **搜图 agent**：只往候选池写图片候选，不碰工件目录。搜索与落盘是两件事，冻结素材是主 agent 的活。
 - 📚 **材料 agent**：只写带来源的研究笔记与结构化数据点。

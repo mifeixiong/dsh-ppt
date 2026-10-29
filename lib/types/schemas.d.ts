@@ -5,13 +5,13 @@
  */
 export declare const PPT_SHELL_TOOL_NAME: string;
 export declare const PPT_NATIVE_TOOL_NAMES: readonly ["pwsh" | "bash", "ask_user_question", "edit", "read", "read_image", "todo_write", "web_search", "write"];
-export declare const PPT_TOOL_NAMES: readonly ["browser_click", "browser_find", "browser_scroll_down", "browser_scroll_up", "browser_visit", "html_create", "image_search", "ppt_create", "ppt_fonts", "ppt_image", "ppt_outline", "ppt_themes", "python"];
+export declare const PPT_TOOL_NAMES: readonly ["browser_click", "browser_find", "browser_scroll_down", "browser_scroll_up", "browser_visit", "html_create", "image_search", "ppt_create", "ppt_fonts", "ppt_image", "ppt_outline", "ppt_themes", "ppt_update", "python"];
 /**
  * The tools this preset cannot work without: the host natives plus every tool
  * the package registers itself. The surface audit treats exactly this list as
  * required, and the headless runner refuses to start when one is absent.
  */
-export declare const PPT_CORE_TOOL_NAMES: ("pwsh" | "bash" | "ask_user_question" | "edit" | "read" | "read_image" | "todo_write" | "web_search" | "write" | "browser_click" | "browser_find" | "browser_scroll_down" | "browser_scroll_up" | "browser_visit" | "html_create" | "image_search" | "ppt_create" | "ppt_fonts" | "ppt_image" | "ppt_outline" | "ppt_themes" | "python")[];
+export declare const PPT_CORE_TOOL_NAMES: ("pwsh" | "bash" | "ask_user_question" | "edit" | "read" | "read_image" | "todo_write" | "web_search" | "write" | "browser_click" | "browser_find" | "browser_scroll_down" | "browser_scroll_up" | "browser_visit" | "html_create" | "image_search" | "ppt_create" | "ppt_fonts" | "ppt_image" | "ppt_outline" | "ppt_themes" | "ppt_update" | "python")[];
 /**
  * The office document lane: tools owned by `dsh-office-tools`, not by this
  * package.
@@ -32,5 +32,5 @@ export declare const PPT_CORE_TOOL_NAMES: ("pwsh" | "bash" | "ask_user_question"
  */
 export declare const PPT_OFFICE_TOOL_NAMES: readonly ["excel_create", "excel_read", "excel_update", "ppt_read", "word_create", "word_read", "word_update"];
 /** Every tool name a PPT-mode session may see: the required core plus the office lane. */
-export declare const PPT_MODE_TOOL_NAMES: ("pwsh" | "bash" | "ask_user_question" | "edit" | "read" | "read_image" | "todo_write" | "web_search" | "write" | "browser_click" | "browser_find" | "browser_scroll_down" | "browser_scroll_up" | "browser_visit" | "html_create" | "image_search" | "ppt_create" | "ppt_fonts" | "ppt_image" | "ppt_outline" | "ppt_themes" | "python" | "excel_create" | "excel_read" | "excel_update" | "ppt_read" | "word_create" | "word_read" | "word_update")[];
+export declare const PPT_MODE_TOOL_NAMES: ("pwsh" | "bash" | "ask_user_question" | "edit" | "read" | "read_image" | "todo_write" | "web_search" | "write" | "browser_click" | "browser_find" | "browser_scroll_down" | "browser_scroll_up" | "browser_visit" | "html_create" | "image_search" | "ppt_create" | "ppt_fonts" | "ppt_image" | "ppt_outline" | "ppt_themes" | "ppt_update" | "python" | "excel_create" | "excel_read" | "excel_update" | "ppt_read" | "word_create" | "word_read" | "word_update")[];
 export type PptToolName = typeof PPT_TOOL_NAMES[number];

@@ -41,6 +41,7 @@ Tired of spending hours searching for templates, aligning text boxes, and tweaki
 **DSH PPT brings presentation making back to what matters — your content:**
 
 - ⚡ **Two-call fast lane**: the default route is `ppt_outline` → `ppt_create` — the outline carries the content and the art direction, and the plugin lays the pages out deterministically from each slide's `style.layout` and the theme palette. No HTML authoring, no browser, no re-render, so a ten-page deck lands in a fraction of a second. Switch to the design lane (`html_create` plus a hand-authored HTML deck) when a page needs a bespoke layout, or to the SVG lane (`ppt_create` with `svg_path`) when a page needs free vector art; all three lanes share one PPTX writer and one OOXML validation pass.
+- ✏️ **Revise one page, not the file**: `ppt_update(pages=[...])` re-lays out only the pages you edited and splices their OOXML into the existing deck — every other page keeps its exact bytes, including edits you made in PowerPoint. `deck-patch.json` records per-page before/after hashes and the media deltas; a page-count change falls back to a full rebuild and reports `mode=full`.
 - 🧩 **SVG lane: vector art becomes native shapes**: hand `ppt_create` a constrained SVG (`<path>`, `<polygon>`, `<rect rx>`, gradients, dashes, arrowheads, text, images) and every leaf is translated into DrawingML — freeforms become `custGeom`, gradients become in-shape `gradFill`, arrowheads become `headEnd`/`tailEnd`, and text is placed from its authored baseline using real font metrics. No browser, no rasterising, and the result stays editable in PowerPoint. Format, contract and limits: [docs/svg-lane.md](docs/svg-lane.md) (Chinese).
 - 📝 **Truly Native & Editable**: Generates standard `.pptx` files rather than whole-page images. Texts, shapes, and charts can be freely edited and adjusted in Microsoft PowerPoint, Apple Keynote, or WPS.
 - 🎨 **Professional Aesthetics & Layouts**: No more cookie-cutter templates. AI intelligently tailors color schemes, typography hierarchies, and page compositions for a polished business look.
@@ -102,7 +103,7 @@ The plugin runs inside the DSH host process. Generation, re-rendering, and quali
 
 | Item | Requirement | Notes |
 | :--- | :--- | :--- |
-| DeepSeek Harness | `0.2.0-rc.2` or newer | The plugin declares 19 `@deepseek-ai/*` peer dependencies (18 at `^0.2.0-rc.2`, plus `@deepseek-ai/cordis` at `^4.0.1`). A mismatched runtime refuses to load the plugin, so neither PPT mode nor its 21 core tools get mounted |
+| DeepSeek Harness | `0.2.0-rc.2` or newer | The plugin declares 19 `@deepseek-ai/*` peer dependencies (18 at `^0.2.0-rc.2`, plus `@deepseek-ai/cordis` at `^4.0.1`). A mismatched runtime refuses to load the plugin, so neither PPT mode nor its 22 core tools get mounted |
 | Node.js | `>= 20.19.0` | Declared by `engines.node` in `package.json` |
 | Operating system | Windows / macOS / Linux | `os` in `package.json` lists only `win32`, `darwin`, and `linux`. Any other platform fails at load time with `PPT_PLATFORM_UNSUPPORTED` |
 | Chromium-based browser | Chrome, Chromium, or Edge installed locally | Used for HTML validation rendering, `browser_visit`, and HTML preview screenshots. `playwright install` is not needed: the plugin probes for a local executable and then launches it explicitly via `chromium.launch({ executablePath })` |
@@ -372,6 +373,34 @@ To install a font file sitting on disk into the current user's font directory, s
 
 On embedding a font **inside the PPTX file itself**: PowerPoint's native font part (`ppt/fonts/*.fntdata`) is an EOT container holding MicroType Express compressed TrueType data, and this plugin does not generate that format. When fidelity has to survive a machine change, install the font on the target machine with `ppt_fonts`, or ship the font file alongside the artifact and install it there.
 
+## Revising a deck: patch the page, not the file
+
+"Change the conversion rate on page 3 to 42%" used to mean re-running everything: a full `ppt_outline` rewrite plus a `ppt_create` relayout of every page — overwriting the page you nudged by hand in PowerPoint last night.
+
+Revisions take a separate path now:
+
+```
+edit page 3 in outline.json  ->  ppt_update(pages=[3])
+```
+
+`ppt_update` re-lays out exactly those pages with the **same deterministic writer** and splices their OOXML back into the existing file:
+
+| Part | Treatment |
+| :--- | :--- |
+| `ppt/slides/slideN.xml` | replaced with the new page |
+| `ppt/slides/_rels/slideN.xml.rels` | replaced, image references re-pointed |
+| `ppt/notesSlides/notesSlideN.xml` | replaced (notes travel with their page) |
+| `ppt/media/*` | new images admitted by content hash; images nothing references any more are pruned |
+| every other part | **byte-identical** — untouched pages, master, themes, and your own PowerPoint edits |
+
+The result reports `mode` (`patch` / `full`), `updated_pages`, `unchanged_pages` and the media deltas, and writes `deck-patch.json` with each patched page's before/after SHA-256. "Only page 3 changed" is checkable, not a promise.
+
+Three boundaries:
+
+1. **Page counts cannot change in place.** When the outline and the deck disagree, the whole deck is rebuilt, `mode=full` says so, and `warnings` explains it (inserting or deleting a page is a reflow, not a revision).
+2. Pages authored in the **HTML lane** are re-laid out by the fast lane and can look different from their neighbours; the tool warns when `deck.html` sits in the artifact directory.
+3. `report.json` is never rewritten behind your back: after a patch it still describes the previous bytes, `report_status=stale` says so, and `ppt_image` refreshes the render layers when you need evidence.
+
 ## Office document lane: ship the attachments with the deck
 
 A deck rarely travels alone: it comes with a script (.docx), a figures table (.xlsx), or the client's older deck that has to be read first. Those capabilities belong to **`dsh-office-tools`**; this plugin does not reimplement them, it adds them to the PPT mode **allowed surface**. When the host mounts that bundle, a PPT-mode session also sees seven document tools:
@@ -427,7 +456,7 @@ Each completed task creates a standalone folder inside `ppt-output/`:
 
 ## Multi-Agent Workflow
 
-A deck can also be produced by several agents working in parallel: one scouting images, one gathering source material, one authoring the frame (outline + Art Direction), and a lead agent that integrates, verifies, and delivers the PPTX. The plugin supplies a fixed 21-tool core (plus the 7-tool Office document lane when the host mounts `dsh-office-tools`) and a strictly validated artifact contract; the split itself is arranged at the session layer.
+A deck can also be produced by several agents working in parallel: one scouting images, one gathering source material, one authoring the frame (outline + Art Direction), and a lead agent that integrates, verifies, and delivers the PPTX. The plugin supplies a fixed 22-tool core (plus the 7-tool Office document lane when the host mounts `dsh-office-tools`) and a strictly validated artifact contract; the split itself is arranged at the session layer.
 
 - 🔍 **Image scout**: writes image candidates into a candidate pool only, never into the artifact directory. Searching and freezing are separate steps — freezing belongs to the lead agent.
 - 📚 **Research agent**: writes sourced notes and structured data points only.

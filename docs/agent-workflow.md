@@ -8,7 +8,7 @@
 
 ---
 
-## 0. 先看硬边界：PPT 模式的工具面是 21 项核心 + 一条可选的 Office 文档车道
+## 0. 先看硬边界：PPT 模式的工具面是 22 项核心 + 一条可选的 Office 文档车道
 
 下表的每个工具名都来自 `src/schemas.ts`：核心 21 项是 `PPT_CORE_TOOL_NAMES`，文档车道 7 项是 `PPT_OFFICE_TOOL_NAMES`，两者并集 `PPT_MODE_TOOL_NAMES` 就是 PPT 模式的允许面。
 
@@ -34,6 +34,7 @@
 | `html_create` | **精修车道专用**：校验受限静态 HTML，原子写 `deck.html`，并逐页渲染 PNG 预览 |
 | `ppt_create` | 出稿的唯一入口：给 `html_path` 时转换 HTML；给 `svg_path` 时把受限 SVG 的自由路径、形状内渐变、虚线与箭头翻译成原生 DrawingML；两个都不给时按 `outline.json` 直接排版出 PPTX（快车道）；也负责 `finalize_visual_review=true` |
 | `ppt_image` | 用真实渲染器打开 PPTX，输出逐页 PNG 与联系表，并可刷新机器质量报告 |
+| `ppt_update` | **改稿入口**：先改 `outline.json`（或 SVG 车道的 `deck.svg`）里受影响的页，再传 `pages=[...]`；只重排这些页并把 OOXML 拼回原文件，其余页字节不变（含 PowerPoint 里手改过的页），证据写 `deck-patch.json`。页数增减不能就地做：会整份重建并在结果里标 `mode=full` |
 
 文档车道（来源是 `dsh-office-tools`，宿主挂载它时才出现；插件只允许、不自己注册）:
 
@@ -66,7 +67,7 @@
 
 两条必须记住的限制：
 
-1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 21 项核心工具里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 21 项核心工具、可选的 7 项文档车道和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
+1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 22 项核心工具里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 22 项核心工具、可选的 7 项文档车道和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
 2. 无论角色怎么划，**能用的工具都不会超出上表**。表外工具调用不会成功。
 
 ---
@@ -167,7 +168,7 @@ ppt-output/_staging/<topic>/
 | :--- | :--- |
 | 输入 | 三方产物 + 澄清结论 |
 | 输出 | `<root>/outline.json`、`design-plan.json`、`deck.html`、`deck.pptx`、`preview/**`、`report.json`、`visual-review.json` |
-| 工具 | 全部 21 项核心工具，外加宿主挂载 `dsh-office-tools` 时的 7 项文档车道；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
+| 工具 | 全部 22 项核心工具，外加宿主挂载 `dsh-office-tools` 时的 7 项文档车道；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
 | 写入边界 | 工件目录的唯一 owner |
 | 禁止 | 手写或手改 `outline.json` / `design-plan.json` / `deck.html` / `report.json`；手工修补 OOXML；用 `rasterize-element` 兜底（除非用户显式授权） |
 

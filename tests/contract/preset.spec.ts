@@ -171,7 +171,7 @@ describe('PPT preset contract', () => {
     expect(source).toContain('allowParallelInProgress: false')
   })
 
-  it('registers thirteen package tools and denies unexpected inherited tools', () => {
+  it('registers fourteen package tools and denies unexpected inherited tools', () => {
     const fixture = toolContext()
     applyTools(fixture.context as never)
     const visible = fixture.context.tools.schemas().map(item => item.name).sort()
@@ -196,6 +196,11 @@ describe('PPT preset contract', () => {
     }))
     expect(pptFonts.parameters?.properties).toEqual(expect.objectContaining({
       text: expect.any(Object), role: expect.any(Object), layer: expect.any(Object), include_unavailable: expect.any(Object),
+    }))
+    const update = fixture.getDefinitions().get('ppt_update') as { parameters?: { properties?: Record<string, unknown> } }
+    expect(update.parameters?.properties).toEqual(expect.objectContaining({
+      pptx_path: expect.any(Object), outline_path: expect.any(Object), pages: expect.any(Object),
+      source: expect.any(Object), svg_path: expect.any(Object), output_path: expect.any(Object),
     }))
     const themes = fixture.getDefinitions().get('ppt_themes') as { parameters?: { properties?: Record<string, unknown> } }
     expect(themes.parameters?.properties).toEqual(expect.objectContaining({

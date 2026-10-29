@@ -1,18 +1,21 @@
+import { access, readFile, rm } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import type {} from './index.ts'
+import { atomicWriteFile } from './atomic.ts'
 import { PptError } from './errors.ts'
 import { buildFontCatalog, discoverRegisteredFonts, installedFontsAsDiscovered, registeredFont } from './fonts.ts'
 import { findMotif, renderMotif } from './motifs.ts'
 import { installFontFile, listInstalledFonts, type InstalledFontFace } from './font-files.ts'
 import { createHtmlDeck } from './html.ts'
 import { describeImageSearchDegradation } from './image-search.ts'
-import { writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
+import { validatePptOutline, writePptOutline, SLIDE_LAYOUTS, SLIDE_TYPES } from './outline.ts'
+import { deckPageCount, splicePptxPages, type PptxPatchReport } from './patch.ts'
 import { planSlideAnimations, TEXT_ANIMATION_DIRECTIONS, TEXT_ANIMATION_EFFECTS, TEXT_ANIMATION_STARTS, type AnimationPlan, type SlideAnimationPlanEntry, type TextAnimation } from './animation.ts'
 import { SLIDE_TRANSITION_DIRECTIONS, SLIDE_TRANSITION_SPEEDS, SLIDE_TRANSITION_TYPES, type SlideTransition, type SlideTransitionPlan } from './transitions.ts'
 import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
-import { createPptx, createPptxFromOutline } from './pptx.ts'
+import { createPptx, createPptxFromOutline, inspectPptxPackage } from './pptx.ts'
 import { createPptxFromSvg, type SvgLaneSummary } from './svg-lane.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
 import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
@@ -1193,6 +1196,47 @@ function buildMotionPlans(effects: readonly RawEffectPage[] | undefined): {
   }
 }
 
+/**
+ * Per-page motion, shared by the two tools that can produce a deck. Keeping one
+ * schema means a page patched by `ppt_update` accepts exactly the motion
+ * `ppt_create` accepts, and the model does not have to learn a second shape.
+ */
+const MOTION_EFFECTS_PARAM = {
+  type: 'array',
+  description: 'Optional per-page motion. A page carrying a transition and/or entrance animations is rewritten inside the finished package; pages left out stay static. Animations target an IR element id, which is the shape name in the PPTX.',
+  items: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      page: { type: 'integer', required: true, description: '1-based page number.' },
+      transition: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          type: { type: 'string', required: true, enum: SLIDE_TRANSITION_TYPES, description: 'Slide transition family.' },
+          direction: { type: 'string', enum: SLIDE_TRANSITION_DIRECTIONS, description: 'Only push, wipe, cover, and pull accept a direction.' },
+          speed: { type: 'string', enum: SLIDE_TRANSITION_SPEEDS },
+          advance_after_ms: { type: 'integer', description: 'Auto-advance delay in milliseconds.' },
+          advance_on_click: { type: 'boolean', description: 'May only be set to false, to disable advancing on click.' },
+        },
+      },
+      animations: {
+        type: 'array',
+        description: 'Entrance animations in playback order, at most 24 per page.',
+        items: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            target: { type: 'string', required: true, description: 'IR element id, which becomes the shape name in the PPTX.' },
+            effect: { type: 'string', required: true, enum: TEXT_ANIMATION_EFFECTS, description: 'Entrance effect. Motion effects such as zoom, fly-in, and spiral are what makes text appear to move.' },
+            direction: { type: 'string', enum: TEXT_ANIMATION_DIRECTIONS, description: 'Accepted only by effects that render one: wipe, fly-in, crawl, peek, blinds, checkerboard, random-bars, box, circle, diamond, plus, stretch, swivel.' },
+            by_paragraph: { type: 'boolean', description: 'Build the effect one paragraph at a time instead of animating the whole box.' },
+            start: { type: 'string', enum: TEXT_ANIMATION_STARTS, description: 'Defaults to on-click. The first animation of a page always opens a click step, and an effect that follows another in the same group plays with or after it.' },
+            duration_ms: { type: 'integer', description: '1..60000; defaults to 500.' },
+          },
+        },
+      },
+    },
+  },
+} as const
+
 function pptxTool(ctx: Context) {
   const result = (
     report: PptQualityReport,
@@ -1250,41 +1294,7 @@ function pptxTool(ctx: Context) {
         type: 'boolean',
         description: 'After read_image review and writing visual-review.json, set true to validate that independent review and recompute the four quality gates without regenerating the PPTX.',
       },
-      effects: {
-        type: 'array',
-        description: 'Optional per-page motion. A page carrying a transition and/or entrance animations is rewritten inside the finished package; pages left out stay static. Animations target an IR element id, which is the shape name in the PPTX.',
-        items: {
-          type: 'object', additionalProperties: false,
-          properties: {
-            page: { type: 'integer', required: true, description: '1-based page number.' },
-            transition: {
-              type: 'object', additionalProperties: false,
-              properties: {
-                type: { type: 'string', required: true, enum: SLIDE_TRANSITION_TYPES, description: 'Slide transition family.' },
-                direction: { type: 'string', enum: SLIDE_TRANSITION_DIRECTIONS, description: 'Only push, wipe, cover, and pull accept a direction.' },
-                speed: { type: 'string', enum: SLIDE_TRANSITION_SPEEDS },
-                advance_after_ms: { type: 'integer', description: 'Auto-advance delay in milliseconds.' },
-                advance_on_click: { type: 'boolean', description: 'May only be set to false, to disable advancing on click.' },
-              },
-            },
-            animations: {
-              type: 'array',
-              description: 'Entrance animations in playback order, at most 24 per page.',
-              items: {
-                type: 'object', additionalProperties: false,
-                properties: {
-                  target: { type: 'string', required: true, description: 'IR element id, which becomes the shape name in the PPTX.' },
-                  effect: { type: 'string', required: true, enum: TEXT_ANIMATION_EFFECTS, description: 'Entrance effect. Motion effects such as zoom, fly-in, and spiral are what makes text appear to move.' },
-                  direction: { type: 'string', enum: TEXT_ANIMATION_DIRECTIONS, description: 'Accepted only by effects that render one: wipe, fly-in, crawl, peek, blinds, checkerboard, random-bars, box, circle, diamond, plus, stretch, swivel.' },
-                  by_paragraph: { type: 'boolean', description: 'Build the effect one paragraph at a time instead of animating the whole box.' },
-                  start: { type: 'string', enum: TEXT_ANIMATION_STARTS, description: 'Defaults to on-click. The first animation of a page always opens a click step, and an effect that follows another in the same group plays with or after it.' },
-                  duration_ms: { type: 'integer', description: '1..60000; defaults to 500.' },
-                },
-              },
-            },
-          },
-        },
-      },
+      effects: MOTION_EFFECTS_PARAM,
     },
     output: {
       schema: PPTX_OUTPUT,
@@ -1417,6 +1427,199 @@ function pptImageTool(ctx: Context) {
   })
 }
 
+const PPTX_UPDATE_OUTPUT = {
+  type: 'object',
+  properties: {
+    pptx_path: { type: 'string', required: true },
+    page_count: { type: 'integer', required: true },
+    mode: { type: 'string', required: true, description: 'patch when only the named pages were replaced; full when the deck had to be rebuilt.' },
+    updated_pages: { type: 'array', required: true, items: { type: 'integer' } },
+    unchanged_pages: { type: 'array', required: true, items: { type: 'integer' } },
+    media: {
+      type: 'object', required: true, additionalProperties: false,
+      properties: {
+        added: { type: 'array', required: true, items: { type: 'string' } },
+        reused: { type: 'integer', required: true },
+        pruned: { type: 'array', required: true, items: { type: 'string' } },
+      },
+    },
+    patch_report_path: { type: 'string', required: true },
+    report_status: { type: 'string', required: true, description: 'stale when the quality report still describes the previous bytes, recomputed after a full rebuild.' },
+    warnings: { type: 'array', required: true, items: { type: 'string' } },
+  },
+  additionalProperties: false,
+} as const
+
+/**
+ * Revise named pages of an existing deck without touching the rest.
+ *
+ * The mechanism is a package splice, not a re-render: a reference deck is built
+ * from the edited source with the same deterministic writer, then only the
+ * requested pages' OOXML parts are swapped into the existing file. Unpatched
+ * pages keep their exact bytes — including any edit made in PowerPoint — which
+ * is the one behaviour a full rebuild cannot offer.
+ */
+function pptUpdateTool(ctx: Context) {
+  return defineTool({
+    name: 'ppt_update',
+    description: 'Revise only the pages that changed in an existing editable PPTX. Edit the page(s) in outline.json first (or in deck.svg for the SVG lane), then call this with the affected page numbers: the plugin re-lays out those pages and splices their OOXML into the current file, so every other page keeps its exact bytes, including edits made outside this plugin. Use it for copy fixes, metric refreshes and single-page redesigns instead of re-running ppt_outline and ppt_create. Pages cannot be added, removed or reordered here: when the outline no longer matches the deck\'s page count the whole deck is rebuilt and the result says mode=full.',
+    parameters: {
+      pptx_path: {
+        type: 'string', required: true,
+        description: 'Workspace-relative path of the existing deck, as returned by ppt_create.',
+      },
+      outline_path: {
+        type: 'string', required: true,
+        description: 'Workspace-relative outline.json in the same artifact directory. The full outline is validated, so the edited page must still satisfy the content model.',
+      },
+      pages: {
+        type: 'array', required: true, items: { type: 'integer' },
+        description: '1-based page numbers whose content changed. Pass every page you edited; a page you edited but do not list keeps its old bytes.',
+      },
+      output_path: {
+        type: 'string',
+        description: 'Optional workspace-relative .pptx path in the same artifact directory. Defaults to rewriting pptx_path in place.',
+      },
+      source: {
+        type: 'string', enum: ['outline', 'svg'],
+        description: 'Which authoring source the pages come from. Defaults to outline (fast lane).',
+      },
+      svg_path: {
+        type: 'string',
+        description: 'Workspace-relative deck.svg, required when source=svg and rejected otherwise.',
+      },
+      effects: MOTION_EFFECTS_PARAM,
+    },
+    output: {
+      schema: PPTX_UPDATE_OUTPUT,
+      render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
+    },
+    async execute(args, exec) {
+      const { workspace } = browserExecution(exec)
+      const motion = buildMotionPlans(args.effects)
+      const source = args.source ?? 'outline'
+      if (args.pages.length === 0) throw new PptError('PPT_UPDATE_INPUT_INVALID', 'pages must name at least one page to update')
+      if (source === 'svg' && args.svg_path === undefined) throw new PptError('PPT_UPDATE_INPUT_INVALID', 'source=svg requires svg_path')
+      if (source === 'outline' && args.svg_path !== undefined) throw new PptError('PPT_UPDATE_INPUT_INVALID', 'svg_path is only valid with source=svg')
+
+      const deckPath = await resolveWorkspacePath(workspace, args.pptx_path, { mustExist: true, kind: 'file' })
+      const outlinePath = await resolveWorkspacePath(workspace, args.outline_path, { mustExist: true, kind: 'file' })
+      const artifactRoot = dirname(outlinePath)
+      if (dirname(deckPath) !== artifactRoot) {
+        throw new PptError('PPT_UPDATE_INPUT_INVALID', 'the deck and the outline must share one artifact directory')
+      }
+      const outputPath = args.output_path === undefined ? deckPath : await resolveWorkspacePath(workspace, args.output_path)
+      if (dirname(outputPath) !== artifactRoot) {
+        throw new PptError('PPT_UPDATE_INPUT_INVALID', 'the revised deck must stay in the artifact directory')
+      }
+
+      const outline = validatePptOutline(JSON.parse(await readFile(outlinePath, 'utf8')))
+      const reportPath = join(artifactRoot, 'report.json')
+      const visualReviewPath = join(artifactRoot, 'visual-review.json')
+      const patchReportPath = join(artifactRoot, 'deck-patch.json')
+      const temporary = join(artifactRoot, `.patch-reference.${process.pid}.${Date.now()}.pptx`)
+      const warnings: string[] = []
+      try {
+        // The reference deck comes from the same writer the lane uses, so the
+        // patched pages carry exactly the layout a fresh ppt_create would give.
+        const reference = source === 'svg'
+          ? await createPptxFromSvg({
+            workspace, svg_path: args.svg_path!, outline_path: args.outline_path,
+            output_path: workspaceRelative(workspace, temporary), signal: exec.signal,
+            ...(motion.transitions === undefined ? {} : { transitions: motion.transitions }),
+            ...(motion.animations === undefined ? {} : { animations: motion.animations }),
+          })
+          : await createPptxFromOutline(
+            workspace, args.outline_path, workspaceRelative(workspace, temporary), exec.signal, motion.transitions, motion.animations,
+          )
+        const referenceBytes = new Uint8Array(await readFile(temporary))
+        const targetBytes = new Uint8Array(await readFile(deckPath))
+        const targetPages = deckPageCount(targetBytes)
+
+        let bytes: Uint8Array
+        let mode: 'patch' | 'full'
+        let patch: PptxPatchReport | undefined
+        if (targetPages !== outline.length) {
+          warnings.push(`the deck has ${targetPages} page(s) but the outline has ${outline.length}; pages cannot be added or removed in place, so the whole deck was rebuilt`)
+          bytes = referenceBytes
+          mode = 'full'
+        } else {
+          try {
+            const spliced = splicePptxPages(targetBytes, referenceBytes, args.pages)
+            bytes = spliced.bytes
+            patch = spliced.report
+            mode = 'patch'
+          } catch (error) {
+            if (!(error instanceof PptError) || error.code !== 'PPT_UPDATE_PATCH_UNAVAILABLE') throw error
+            warnings.push(`page-level patching was refused (${error.message}); the whole deck was rebuilt`)
+            bytes = referenceBytes
+            mode = 'full'
+          }
+        }
+        // Same structural gate the create path runs, before anything is
+        // committed: a splice that produced an unreadable package must not land.
+        inspectPptxPackage(bytes, outline.length)
+        // Overwriting is the point: a revision replaces the deck it revises.
+        await atomicWriteFile(outputPath, bytes, { signal: exec.signal, overwrite: true })
+
+        // A fast-lane relayout of a page that was authored in HTML looks like a
+        // different design system. Say it instead of letting the caller find out.
+        if (mode === 'patch' && source === 'outline'
+          && await access(join(artifactRoot, 'deck.html')).then(() => true, () => false)) {
+          warnings.push('this artifact directory also contains deck.html: the patched pages were re-laid out by the fast lane and can differ from the HTML-lane pages')
+        }
+
+        let reportStatus: 'stale' | 'recomputed' = 'stale'
+        if (mode === 'full') {
+          await ctx.pptRuntime.quality.evaluateStructural(
+            workspace, workspaceRelative(workspace, outputPath), reportPath, visualReviewPath, outline.length,
+            await ctx.pptRuntime.canReviewImages(exec.agent), {
+              page_count: outline.length,
+              native_element_count: reference.native_element_count,
+              rasterized_elements: reference.rasterized_elements,
+              source: source === 'svg' ? 'svg-lane' : 'outline-fast-lane',
+            }, exec.signal,
+          )
+          reportStatus = 'recomputed'
+        } else if (await access(reportPath).then(() => true, () => false)) {
+          warnings.push('report.json still describes the previous bytes; run ppt_image to refresh the render and visual layers')
+        }
+
+        const updatedPages = patch?.updated_pages ?? Array.from({ length: outline.length }, (_, index) => index + 1)
+        const unchangedPages = patch?.unchanged_pages ?? []
+        const media = patch?.media ?? { added: [], reused: 0, pruned: [] }
+        await atomicWriteFile(patchReportPath, JSON.stringify({
+          schema_version: 1,
+          updated_at: new Date().toISOString(),
+          source: source === 'svg' ? 'svg-lane' : 'outline-fast-lane',
+          mode,
+          page_count: outline.length,
+          updated_pages: updatedPages,
+          unchanged_pages: unchangedPages,
+          media,
+          notes_replaced: patch?.notes_replaced ?? [],
+          slide_digests: patch?.slide_digests ?? [],
+          warnings,
+        }, null, 2), { overwrite: true })
+
+        return {
+          pptx_path: workspaceRelative(workspace, outputPath),
+          page_count: outline.length,
+          mode,
+          updated_pages: updatedPages,
+          unchanged_pages: unchangedPages,
+          media,
+          patch_report_path: workspaceRelative(workspace, patchReportPath),
+          report_status: reportStatus,
+          warnings,
+        }
+      } finally {
+        await rm(temporary, { force: true })
+      }
+    },
+  })
+}
+
 function unavailableTool(name: typeof PPT_TOOL_NAMES[number], description: string, parameters: Record<string, never>) {
   return defineTool({
     name,
@@ -1538,6 +1741,7 @@ export function apply(ctx: Context): void {
     ppt_image: 'Render or capture a real PPTX to normalized per-slide PNGs and contact sheets using an internal platform adapter.',
     ppt_outline: 'Validate and atomically save the strict JSON PPT outline authored by the current agent.',
     ppt_themes: 'List the built-in deck themes and read one palette and rhythm before the Art Direction pass.',
+    ppt_update: 'Replace only the named pages of an existing deck from the edited outline or SVG, keeping every other page byte-identical.',
     python: 'Run bounded non-interactive Python for data analysis, charts, and image processing.',
   }
   for (const tool of browserTools(ctx)) ctx.tools.register(tool)
@@ -1548,8 +1752,9 @@ export function apply(ctx: Context): void {
   ctx.tools.register(outlineTool(ctx))
   ctx.tools.register(htmlTool(ctx))
   ctx.tools.register(pptxTool(ctx))
+  ctx.tools.register(pptUpdateTool(ctx))
   ctx.tools.register(pptImageTool(ctx))
-  const implemented = new Set(['browser_click', 'browser_find', 'browser_scroll_down', 'browser_scroll_up', 'browser_visit', 'html_create', 'image_search', 'ppt_create', 'ppt_fonts', 'ppt_image', 'ppt_outline', 'ppt_themes', 'python'])
+  const implemented = new Set(['browser_click', 'browser_find', 'browser_scroll_down', 'browser_scroll_up', 'browser_visit', 'html_create', 'image_search', 'ppt_create', 'ppt_fonts', 'ppt_image', 'ppt_outline', 'ppt_themes', 'ppt_update', 'python'])
   for (const toolName of PPT_TOOL_NAMES) {
     if (!implemented.has(toolName)) ctx.tools.register(unavailableTool(toolName, descriptions[toolName], {}))
   }

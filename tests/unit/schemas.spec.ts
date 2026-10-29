@@ -14,7 +14,7 @@ describe('tool surface constants', () => {
   })
 
   it('composes the allowed surface from the required core plus the office lane', () => {
-    expect(PPT_CORE_TOOL_NAMES).toHaveLength(21)
+    expect(PPT_CORE_TOOL_NAMES).toHaveLength(22)
     expect(PPT_OFFICE_TOOL_NAMES).toHaveLength(7)
     expect(PPT_MODE_TOOL_NAMES).toEqual([...PPT_CORE_TOOL_NAMES, ...PPT_OFFICE_TOOL_NAMES].sort())
     expect([...PPT_MODE_TOOL_NAMES].sort()).toEqual(PPT_MODE_TOOL_NAMES)
