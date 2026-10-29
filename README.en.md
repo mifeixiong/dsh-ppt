@@ -102,7 +102,7 @@ The plugin runs inside the DSH host process. Generation, re-rendering, and quali
 
 | Item | Requirement | Notes |
 | :--- | :--- | :--- |
-| DeepSeek Harness | `0.2.0-rc.2` or newer | The plugin declares 19 `@deepseek-ai/*` peer dependencies (18 at `^0.2.0-rc.2`, plus `@deepseek-ai/cordis` at `^4.0.1`). A mismatched runtime refuses to load the plugin, so neither PPT mode nor its 21 tools get mounted |
+| DeepSeek Harness | `0.2.0-rc.2` or newer | The plugin declares 19 `@deepseek-ai/*` peer dependencies (18 at `^0.2.0-rc.2`, plus `@deepseek-ai/cordis` at `^4.0.1`). A mismatched runtime refuses to load the plugin, so neither PPT mode nor its 21 core tools get mounted |
 | Node.js | `>= 20.19.0` | Declared by `engines.node` in `package.json` |
 | Operating system | Windows / macOS / Linux | `os` in `package.json` lists only `win32`, `darwin`, and `linux`. Any other platform fails at load time with `PPT_PLATFORM_UNSUPPORTED` |
 | Chromium-based browser | Chrome, Chromium, or Edge installed locally | Used for HTML validation rendering, `browser_visit`, and HTML preview screenshots. `playwright install` is not needed: the plugin probes for a local executable and then launches it explicitly via `chromium.launch({ executablePath })` |
@@ -372,6 +372,28 @@ To install a font file sitting on disk into the current user's font directory, s
 
 On embedding a font **inside the PPTX file itself**: PowerPoint's native font part (`ppt/fonts/*.fntdata`) is an EOT container holding MicroType Express compressed TrueType data, and this plugin does not generate that format. When fidelity has to survive a machine change, install the font on the target machine with `ppt_fonts`, or ship the font file alongside the artifact and install it there.
 
+## Office document lane: ship the attachments with the deck
+
+A deck rarely travels alone: it comes with a script (.docx), a figures table (.xlsx), or the client's older deck that has to be read first. Those capabilities belong to **`dsh-office-tools`**; this plugin does not reimplement them, it adds them to the PPT mode **allowed surface**. When the host mounts that bundle, a PPT-mode session also sees seven document tools:
+
+| Tool | Purpose |
+| :--- | :--- |
+| `word_create` / `word_read` / `word_update` | Write, read and append Word files: speaker notes, review comments, a written report |
+| `excel_create` / `excel_read` / `excel_update` | Write, read and update Excel workbooks: data tables, figure reconciliation, budgets |
+| `ppt_read` | Read an existing PPTX — paragraphs, tables, notes, image alt text, per-element inch geometry, plus a text wireframe. Read-only, never renders |
+
+Why the lane is *inherited* rather than bundled: the DSH tool registry keeps one table per scope and refuses a second registration of the same name **inside one layer** (`tool "ppt_create" is already registered in this scope`), while a scoped registration shadows a global one. So:
+
+- `dsh-office-tools` stays mounted globally by the profile, and the standard preset keeps all eight office tools;
+- the PPT preset does **not** mount a second copy; it lists those names in its allowed surface (`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`) so its own `restrict()` no longer prunes them as foreign tools;
+- `ppt_create` is shadowed inside PPT mode by this plugin's production pipeline, so there is still exactly one deck producer there; the office writer remains available in every other preset.
+
+Enable it by adding `dsh-office-tools` to the profile's `dsh.profile.bundles` (for example `github:kw78/dsh-office-tools`) and leaving its `enablePptTools` at the default `true`. Without it (headless mounts dsh-ppt only) there is no document lane, and startup diagnostics say so — `office document lane not mounted` is not a failure; a half-mounted lane reads `partial (n/7; missing …)` and is also logged.
+
+Boundary: `ppt_read` returns text and geometry, not render evidence — visual judgement still comes from `ppt_image` PNGs, and `ppt_read` never writes.
+
+---
+
 ## Use Cases
 
 | Category | Example Prompt |
@@ -391,7 +413,7 @@ Each completed task creates a standalone folder inside `ppt-output/`:
 
 ## Multi-Agent Workflow
 
-A deck can also be produced by several agents working in parallel: one scouting images, one gathering source material, one authoring the frame (outline + Art Direction), and a lead agent that integrates, verifies, and delivers the PPTX. The plugin supplies a fixed 21-tool surface and a strictly validated artifact contract; the split itself is arranged at the session layer.
+A deck can also be produced by several agents working in parallel: one scouting images, one gathering source material, one authoring the frame (outline + Art Direction), and a lead agent that integrates, verifies, and delivers the PPTX. The plugin supplies a fixed 21-tool core (plus the 7-tool Office document lane when the host mounts `dsh-office-tools`) and a strictly validated artifact contract; the split itself is arranged at the session layer.
 
 - 🔍 **Image scout**: writes image candidates into a candidate pool only, never into the artifact directory. Searching and freezing are separate steps — freezing belongs to the lead agent.
 - 📚 **Research agent**: writes sourced notes and structured data points only.

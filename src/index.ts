@@ -17,7 +17,7 @@ import z from 'schemastery'
 import { PptError, PPT_ERROR_CODES, type PptErrorCode } from './errors.ts'
 import { isSupportedPlatform } from './platform.ts'
 import { createPptRuntime, type PptRuntime, type PptRuntimeOptions } from './runtime.ts'
-import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES, type PptToolName } from './schemas.ts'
+import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES, type PptToolName } from './schemas.ts'
 
 declare module '@deepseek-ai/cordis' {
   interface Context {
@@ -25,7 +25,10 @@ declare module '@deepseek-ai/cordis' {
   }
 }
 
-export { createPptRuntime, PptError, PPT_ERROR_CODES, PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES }
+export {
+  createPptRuntime, PptError, PPT_ERROR_CODES,
+  PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES,
+}
 export type { PptErrorCode, PptRuntime, PptRuntimeOptions, PptToolName }
 
 export const name = 'dsh-ppt'

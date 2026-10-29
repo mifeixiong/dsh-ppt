@@ -5,9 +5,14 @@ import ToolRegistry, { type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import { describe, expect, it, vi } from 'vitest'
 import { apply as applyTools } from '../../src/tools.ts'
 import { assertSupportedPlatform } from '../../src/index.ts'
-import { PPT_MODE_TOOL_NAMES, PPT_NATIVE_TOOL_NAMES } from '../../src/schemas.ts'
+import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_NATIVE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES } from '../../src/schemas.ts'
 
-interface ToolSurfaceRecord { visible: string[]; missing: string[]; unexpected: string[] }
+interface ToolSurfaceRecord {
+  visible: string[]
+  missing: string[]
+  unexpected: string[]
+  office?: { available: boolean; visible: string[]; missing: string[] }
+}
 
 function toolContext(
   native = [...PPT_NATIVE_TOOL_NAMES, 'glob'],
@@ -170,8 +175,13 @@ describe('PPT preset contract', () => {
     const fixture = toolContext()
     applyTools(fixture.context as never)
     const visible = fixture.context.tools.schemas().map(item => item.name).sort()
-    expect(visible).toEqual(PPT_MODE_TOOL_NAMES)
-    expect(fixture.getRecorded()).toEqual({ visible, missing: [], unexpected: [] })
+    expect(visible).toEqual(PPT_CORE_TOOL_NAMES)
+    expect(fixture.getRecorded()).toEqual({
+      visible,
+      missing: [],
+      unexpected: [],
+      office: { available: false, visible: [], missing: [...PPT_OFFICE_TOOL_NAMES] },
+    })
     const outline = fixture.getDefinitions().get('ppt_outline') as { parameters?: { properties?: { art_direction?: unknown } } }
     const html = fixture.getDefinitions().get('html_create') as { parameters?: { properties?: { design_plan_path?: unknown; strict_design?: unknown } } }
     const pptImage = fixture.getDefinitions().get('ppt_image') as { parameters?: { properties?: Record<string, unknown> } }
@@ -291,14 +301,62 @@ describe('PPT preset contract', () => {
 
     binding.rebind(pptKey)
     const visible = ctx.tools.schemas(agentKey).map(item => item.name).sort()
-    expect(visible).toEqual(PPT_MODE_TOOL_NAMES)
-    expect(recorded).toEqual({ visible: PPT_MODE_TOOL_NAMES, missing: [], unexpected: [] })
+    expect(visible).toEqual(PPT_CORE_TOOL_NAMES)
+    expect(recorded).toEqual({
+      visible: PPT_CORE_TOOL_NAMES,
+      missing: [],
+      unexpected: [],
+      office: { available: false, visible: [], missing: [...PPT_OFFICE_TOOL_NAMES] },
+    })
   })
 
   it('records missing read_image instead of treating 18 tools as healthy', () => {
     const fixture = toolContext(PPT_NATIVE_TOOL_NAMES.filter(name => name !== 'read_image'))
     applyTools(fixture.context as never)
     expect(fixture.getRecorded()).toMatchObject({ missing: ['read_image'] })
+  })
+
+  it('keeps the inherited office document lane visible instead of denying it', () => {
+    const fixture = toolContext([...PPT_NATIVE_TOOL_NAMES, 'glob', ...PPT_OFFICE_TOOL_NAMES])
+    applyTools(fixture.context as never)
+    const visible = fixture.context.tools.schemas().map(item => item.name).sort()
+
+    // The office tools are the document half of the merged surface: the preset
+    // sees them because the host mounted dsh-office-tools, and must allow them.
+    expect(visible).toEqual(PPT_MODE_TOOL_NAMES)
+    expect(fixture.getDenied()).toEqual(['glob'])
+    expect(fixture.getRecorded()).toEqual({
+      visible,
+      missing: [],
+      unexpected: [],
+      office: { available: true, visible: [...PPT_OFFICE_TOOL_NAMES], missing: [] },
+    })
+    expect(fixture.getWarnings()).toEqual([])
+  })
+
+  it('warns once when only part of the office lane is mounted', () => {
+    const mounted = PPT_OFFICE_TOOL_NAMES.slice(0, 3)
+    const absent = PPT_OFFICE_TOOL_NAMES.slice(3)
+    const fixture = toolContext([...PPT_NATIVE_TOOL_NAMES, ...mounted])
+    applyTools(fixture.context as never)
+
+    expect(fixture.getRecorded()).toMatchObject({
+      missing: [],
+      unexpected: [],
+      office: { available: true, visible: [...mounted], missing: [...absent] },
+    })
+    expect(fixture.getWarnings()).toEqual([`PPT preset sees 3/7 office tool(s); unavailable: ${absent.join(', ')}`])
+  })
+
+  it('treats an unmounted office lane as a supported composition, not a defect', () => {
+    const fixture = toolContext()
+    applyTools(fixture.context as never)
+    expect(fixture.getRecorded()).toMatchObject({
+      missing: [],
+      unexpected: [],
+      office: { available: false, visible: [], missing: [...PPT_OFFICE_TOOL_NAMES] },
+    })
+    expect(fixture.getWarnings()).toEqual([])
   })
 
   it('cancels a queued surface audit when the tool effect is disposed', async () => {

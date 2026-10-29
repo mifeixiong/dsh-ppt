@@ -17,10 +17,22 @@ export interface PptRuntimeOptions {
   fontDirs?: readonly string[]
 }
 
+/**
+ * The inherited office document lane, as seen by the preset's surface audit.
+ * `available` is false when the host mounted no office bundle at all, which is
+ * a supported composition (headless), not a defect.
+ */
+export interface ToolSurfaceOfficeStatus {
+  readonly available: boolean
+  readonly visible: readonly string[]
+  readonly missing: readonly string[]
+}
+
 export interface ToolSurfaceStatus {
   visible: readonly string[]
   missing: readonly string[]
   unexpected: readonly string[]
+  office?: ToolSurfaceOfficeStatus
 }
 
 export interface PptRuntime {
@@ -67,6 +79,15 @@ class DefaultPptRuntime implements PptRuntime {
       visible: Object.freeze([...status.visible]),
       missing: Object.freeze([...status.missing]),
       unexpected: Object.freeze([...status.unexpected]),
+      ...(status.office === undefined
+        ? {}
+        : {
+          office: Object.freeze({
+            available: status.office.available,
+            visible: Object.freeze([...status.office.visible]),
+            missing: Object.freeze([...status.office.missing]),
+          }),
+        }),
     })
   }
 

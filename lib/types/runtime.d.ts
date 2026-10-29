@@ -15,10 +15,21 @@ export interface PptRuntimeOptions {
     browserExecutable?: string;
     fontDirs?: readonly string[];
 }
+/**
+ * The inherited office document lane, as seen by the preset's surface audit.
+ * `available` is false when the host mounted no office bundle at all, which is
+ * a supported composition (headless), not a defect.
+ */
+export interface ToolSurfaceOfficeStatus {
+    readonly available: boolean;
+    readonly visible: readonly string[];
+    readonly missing: readonly string[];
+}
 export interface ToolSurfaceStatus {
     visible: readonly string[];
     missing: readonly string[];
     unexpected: readonly string[];
+    office?: ToolSurfaceOfficeStatus;
 }
 export interface PptRuntime {
     readonly options: Readonly<PptRuntimeOptions>;

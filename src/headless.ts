@@ -8,7 +8,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import z from 'schemastery'
 import { PptError } from './errors.ts'
-import { PPT_MODE_TOOL_NAMES } from './schemas.ts'
+import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES } from './schemas.ts'
 
 export const name = 'ppt-headless-runner'
 export const inject = ['agentDefaultModel', 'agentPresets', 'agents', 'sessions']
@@ -74,10 +74,13 @@ async function run(ctx: Context, config: Config, io: HeadlessIo): Promise<void> 
     },
   })
   await agent.whenIdle()
+  // Headless mounts dsh-ppt only, so the office lane is legitimately absent:
+  // `allowed` still covers it (a host that did mount an office bundle must not
+  // be reported as unexpected), while `missing` holds the required core.
   const allowed = new Set<string>(PPT_MODE_TOOL_NAMES)
   const visible = agent.ctx.tools.schemas(agent).map(tool => tool.name).sort()
   const unexpected = visible.filter(toolName => !allowed.has(toolName))
-  const missing = PPT_MODE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
+  const missing = PPT_CORE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
   if (unexpected.length > 0 || missing.length > 0) {
     throw new PptError(
       'PPT_CAPABILITY_UNAVAILABLE',

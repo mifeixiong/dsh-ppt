@@ -13,13 +13,13 @@ import type { Context } from '@deepseek-ai/cordis';
 import z from 'schemastery';
 import { PptError, PPT_ERROR_CODES, type PptErrorCode } from './errors.ts';
 import { createPptRuntime, type PptRuntime, type PptRuntimeOptions } from './runtime.ts';
-import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES, type PptToolName } from './schemas.ts';
+import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES, type PptToolName } from './schemas.ts';
 declare module '@deepseek-ai/cordis' {
     interface Context {
         pptRuntime: PptRuntime;
     }
 }
-export { createPptRuntime, PptError, PPT_ERROR_CODES, PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES };
+export { createPptRuntime, PptError, PPT_ERROR_CODES, PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES, };
 export type { PptErrorCode, PptRuntime, PptRuntimeOptions, PptToolName };
 export declare const name = "dsh-ppt";
 export declare const inject: string[];

@@ -15,7 +15,7 @@ import { resolveWorkspacePath, workspaceRelative } from './paths.ts'
 import { createPptx, createPptxFromOutline } from './pptx.ts'
 import { createPptxFromSvg, type SvgLaneSummary } from './svg-lane.ts'
 import { applyVisualReview, type PptQualityReport } from './quality.ts'
-import { PPT_MODE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
+import { PPT_CORE_TOOL_NAMES, PPT_MODE_TOOL_NAMES, PPT_OFFICE_TOOL_NAMES, PPT_TOOL_NAMES } from './schemas.ts'
 import type { SessionOwner } from './session-resources.ts'
 import {
   contrastRatio, findTheme, gradientCss, listThemes, planThemePages, PPT_THEMES, themeFindings, themeSummary,
@@ -1486,6 +1486,12 @@ export function apply(ctx: Context): void {
   // tools: exact-scope registrations are intentionally exempt from
   // ctx.tools.restrict(), so registering first can make the restriction miss
   // host tools when Cordis materializes the ordered effects.
+  //
+  // `allow` is the whole supported surface, which includes the inherited office
+  // document lane (`PPT_OFFICE_TOOL_NAMES`, owned by dsh-office-tools). Those
+  // tools must stay allowed instead of being denied as foreign: they are the
+  // document half of the merged surface. See schemas.ts for why this package
+  // inherits them rather than mounting a second registration.
   const allow = new Set<string>(PPT_MODE_TOOL_NAMES)
   // The reserved PTC transport is skipped here on purpose: it is synthesized
   // into the view rather than registered, `tools.register()` refuses the name,
@@ -1569,8 +1575,15 @@ export function apply(ctx: Context): void {
       // The reserved PTC transport is part of the host's presentation, not a
       // registration from another plugin, so it is not a divergence to report.
       const unexpected = visible.filter(toolName => !allow.has(toolName) && toolName !== RESERVED_PTC_TRANSPORT)
-      const missing = PPT_MODE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
-      ctx.pptRuntime.recordToolSurface({ visible, missing, unexpected })
+      // `missing` covers the required core only. The office lane is an optional
+      // inheritance: a host that mounted no office bundle (headless) simply has
+      // no document lane, and that is a supported composition rather than an
+      // incomplete preset.
+      const missing = PPT_CORE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
+      const officeVisible = PPT_OFFICE_TOOL_NAMES.filter(toolName => visible.includes(toolName))
+      const officeMissing = PPT_OFFICE_TOOL_NAMES.filter(toolName => !visible.includes(toolName))
+      const office = { available: officeVisible.length > 0, visible: officeVisible, missing: officeMissing }
+      ctx.pptRuntime.recordToolSurface({ visible, missing, unexpected, office })
       if (unexpected.length > 0) {
         // Other plugins may mount after this preset, so warn and keep the
         // preset's surface usable instead of aborting the host.
@@ -1578,6 +1591,13 @@ export function apply(ctx: Context): void {
       }
       if (missing.length > 0) {
         warn(ctx, `PPT preset is missing ${missing.length} expected tool(s): ${missing.join(', ')}`)
+      }
+      // A half-mounted office bundle is worth one line: the preset advertises
+      // the document lane in its instructions, so a partially visible lane means
+      // some of those instructions cannot be followed. A fully absent lane is
+      // silent — that is the headless composition.
+      if (officeVisible.length > 0 && officeMissing.length > 0) {
+        warn(ctx, `PPT preset sees ${officeVisible.length}/${PPT_OFFICE_TOOL_NAMES.length} office tool(s); unavailable: ${officeMissing.join(', ')}`)
       }
     }
 

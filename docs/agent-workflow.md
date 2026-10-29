@@ -8,7 +8,9 @@
 
 ---
 
-## 0. 先看硬边界：PPT 模式的工具面是固定的 21 项
+## 0. 先看硬边界：PPT 模式的工具面是 21 项核心 + 一条可选的 Office 文档车道
+
+下表的每个工具名都来自 `src/schemas.ts`：核心 21 项是 `PPT_CORE_TOOL_NAMES`，文档车道 7 项是 `PPT_OFFICE_TOOL_NAMES`，两者并集 `PPT_MODE_TOOL_NAMES` 就是 PPT 模式的允许面。
 
 | 工具 | 用途 |
 | :--- | :--- |
@@ -33,6 +35,16 @@
 | `ppt_create` | 出稿的唯一入口：给 `html_path` 时转换 HTML；给 `svg_path` 时把受限 SVG 的自由路径、形状内渐变、虚线与箭头翻译成原生 DrawingML；两个都不给时按 `outline.json` 直接排版出 PPTX（快车道）；也负责 `finalize_visual_review=true` |
 | `ppt_image` | 用真实渲染器打开 PPTX，输出逐页 PNG 与联系表，并可刷新机器质量报告 |
 
+文档车道（来源是 `dsh-office-tools`，宿主挂载它时才出现；插件只允许、不自己注册）:
+
+| 工具 | 用途 |
+| :--- | :--- |
+| `word_create` / `word_read` / `word_update` | 在会话工作区里写、读、追加 Word（.docx）：讲稿、评审意见、逐页备注的正式稿 |
+| `excel_create` / `excel_read` / `excel_update` | 在会话工作区里写、读、改 Excel（.xlsx）：数据表、口径对照、预算与清单 |
+| `ppt_read` | 读取已有 PPTX 的段落、表格、备注、图片说明与逐元素英寸几何，返回文字线框；**只读不渲染** |
+
+车道边界：`ppt_create` 在 PPT 模式里永远是本插件的出稿管线（同名工具被预设作用域遮蔽），office 的 `ppt_create` 只在其他预设里可用；`ppt_read` 读的是既有文件的文字与几何，不是渲染证据，视觉判断仍以 `ppt_image` 为准。车道缺席时（headless、或 profile 没挂 office bundle）不要声称能写 docx/xlsx。
+
 ### 0.1 两条车道：快车道是默认
 
 | | 快车道（默认） | 精修车道（按需） |
@@ -54,7 +66,7 @@
 
 两条必须记住的限制：
 
-1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 21 项里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 21 项工具和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
+1. **PPT 模式本身不含「派生 teammate」或跨 agent 通信的工具。** 上表 21 项核心工具里没有派生、消息投递、共享任务板这一类工具。分工是**会话层编排**——由具备 Agent Teams 的会话派生子 agent，或人工并行开多个会话。插件不负责调度，只负责给出这 21 项核心工具、可选的 7 项文档车道和一套强校验的工件契约。角色之间的隔离靠任务书里的写入范围约定，不靠工具面隔离。
 2. 无论角色怎么划，**能用的工具都不会超出上表**。表外工具调用不会成功。
 
 ---
@@ -155,7 +167,7 @@ ppt-output/_staging/<topic>/
 | :--- | :--- |
 | 输入 | 三方产物 + 澄清结论 |
 | 输出 | `<root>/outline.json`、`design-plan.json`、`deck.html`、`deck.pptx`、`preview/**`、`report.json`、`visual-review.json` |
-| 工具 | 全部 21 项；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
+| 工具 | 全部 21 项核心工具，外加宿主挂载 `dsh-office-tools` 时的 7 项文档车道；**但只有主 agent 调用 `ppt_outline`、`html_create`、`ppt_create`、`ppt_image`** |
 | 写入边界 | 工件目录的唯一 owner |
 | 禁止 | 手写或手改 `outline.json` / `design-plan.json` / `deck.html` / `report.json`；手工修补 OOXML；用 `rasterize-element` 兜底（除非用户显式授权） |
 

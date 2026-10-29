@@ -43,6 +43,7 @@
 - ⚡ **两步出稿的快车道**：默认路线是 `ppt_outline` → `ppt_create`——大纲定内容与 Art Direction，插件按 `style.layout` 与主题配色确定性排版，不写 HTML、不开浏览器、不跑回渲，十页稿几百毫秒落盘。要手工版式时再切到精修车道（`html_create` + HTML 设计稿），需要自由矢量图形时走 SVG 车道（`ppt_create` 带 `svg_path`），三条车道共用同一个 PPTX 写入器与 OOXML 校验。
 - 🧩 **SVG 车道：矢量稿直接变原生形状**：给 `ppt_create` 一份受限 SVG（`<path>`/`<polygon>`/`<rect rx>`/渐变/虚线/箭头/文本/图片），它把每个图元翻译成 DrawingML——自由路径是 `custGeom`，渐变是形状内 `gradFill`，箭头是 `headEnd/tailEnd`，文本按字体度量反解基线。不开浏览器、不栅格化，图元在 PowerPoint 里仍是可改的对象。格式、契约与边界见 [SVG 车道](docs/svg-lane.md)。
 - 📝 **真正原生可编辑**：生成的不是整页死图，而是标准的 `.pptx` 文件。文字、图形、图表均可在 PowerPoint、Keynote 或 WPS 中随意二次修改与微调。
+- 📄 **与 `dsh-office-tools` 合成的文档车道**：PPT 模式不只出稿——宿主挂了 office bundle 时，同一会话里还多出 7 项文档工具：`word_*` 写讲稿与评审意见，`excel_*` 写数据表与口径对照，`ppt_read` 读既有 PPTX 的段落/表格/备注/元素几何。出稿仍只有一条路径（`ppt_create` 在预设作用域里遮蔽 office 的同名写入器）。见 [Office 文档车道](#office-文档车道和-ppt-一起交付附件)。
 - 🎨 **专业级版式与审美**：告别套路化模板，AI 根据主题内容智能定制色彩搭配、字体层级与页面构图，呈现高级商务质感。
 - 🎭 **12 套内置主题库**：每套主题都是一份经过校验的设计配方——配色取自 IBM Carbon、Tailwind、Radix、Microsoft Fluent 2 等公开色板，渐变取自 Color Hunt 与 uiGradients 的精选方案；字体只使用本机真能渲染的家族，并附带动效节奏、排印规则、签名手法、禁用习惯与逐页版式配方。另有 15 类生成式 SVG 纹样（同心圆、半调波点、HUD、刻度圆、条形码、波浪、点阵、多边形网格、等高线、经纬球、射线等）可按主题配色现取现用。调用 `ppt_themes` 直接选用，配色与渐变的文字对比度全部经 WCAG AA（≥4.5:1）实算验证，页面底色（含原生渐变）会原样进入 PPTX。
 - 📈 **智能图表与精选配图**：自动搜索合规免版权商业配图，并根据数据自动绘制高品质图表，告别枯燥的大段纯文本。
@@ -102,7 +103,7 @@ dsh --profile headless "为管理层制作一份6页的AI项目季度复盘与�
 
 | 项目 | 要求 | 说明 |
 | :--- | :--- | :--- |
-| DeepSeek Harness | `0.2.0-rc.2` 或更高 | 插件声明 19 项 `@deepseek-ai/*` 对等依赖（其中 18 项为 `^0.2.0-rc.2`，`@deepseek-ai/cordis` 为 `^4.0.1`）。版本不匹配时插件被拒绝加载，PPT 模式与 21 项工具都不会挂载 |
+| DeepSeek Harness | `0.2.0-rc.2` 或更高 | 插件声明 19 项 `@deepseek-ai/*` 对等依赖（其中 18 项为 `^0.2.0-rc.2`，`@deepseek-ai/cordis` 为 `^4.0.1`）。版本不匹配时插件被拒绝加载，PPT 模式与 21 项核心工具都不会挂载 |
 | Node.js | `>= 20.19.0` | `package.json` 的 `engines.node` 声明 |
 | 操作系统 | Windows / macOS / Linux | `package.json` 的 `os` 只声明 `win32`、`darwin`、`linux`；其它平台在插件加载期抛 `PPT_PLATFORM_UNSUPPORTED` |
 | Chromium 系浏览器 | 本机已安装 Chrome、Chromium 或 Edge | HTML 校验渲染、`browser_visit` 与 HTML 预览截图都靠它。不需要 `playwright install`：插件只探测本机可执行文件，再用 `chromium.launch({ executablePath })` 显式启动 |
@@ -409,6 +410,28 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 页数必须与 `outline.json` 一致；不支持的图元（`filter`/`mask`/`clipPath`/`pattern`/`use`/`marker`）会带页号与元素 id 报错，而不是静默丢层。完整契约、映射表、诊断码与已知边界见 **[SVG 车道](docs/svg-lane.md)**，调查笔记见 **[ppt-master 实现调查](docs/ppt-master-notes.md)**。
 
+## Office 文档车道：和 PPT 一起交付附件
+
+一场汇报很少只有一份 PPTX：通常还要一份讲稿（.docx）、一张口径对照表（.xlsx），或者需要先读懂客户给的旧 PPTX。这些能力由 **`dsh-office-tools`** 提供，本插件不重复实现，而是把它们纳入 PPT 模式的**允许面**——宿主挂了那个 bundle，PPT 模式里就同时出现 7 项文档工具：
+
+| 工具 | 作用 |
+| :--- | :--- |
+| `word_create` / `word_read` / `word_update` | 写、读、追加 Word：讲稿、评审意见、逐页备注的正式稿 |
+| `excel_create` / `excel_read` / `excel_update` | 写、读、改 Excel：数据表、口径对照、预算与清单 |
+| `ppt_read` | 读已有 PPTX 的段落、表格、备注、图片说明与逐元素英寸几何，返回文字线框；**只读、不渲染** |
+
+**为什么是「继承」而不是「内置」**：DSH 的工具注册表一个作用域一张表，**同层**重复注册同名工具会直接失败（`tool "ppt_create" is already registered in this scope`），而**作用域注册会遮蔽全局同名工具**。所以组合方式是：
+
+- `dsh-office-tools` 照旧由 profile 全局挂载，标准模式仍有完整的 8 项 Office 工具；
+- PPT 模式的预设**不**挂第二份 office 工具，只把它们列进允许面（`PPT_OFFICE_TOOL_NAMES` / `PPT_MODE_TOOL_NAMES`），因此不会被预设的 `restrict()` 当外部工具剪掉；
+- `ppt_create` 在 PPT 模式里被本插件的出稿管线遮蔽——**出稿仍然只有一条路径**，不会出现两套 PPTX 生成器打架；office 的写入器只在其它预设里可用。
+
+启用方式：把 `dsh-office-tools` 挂进 profile 的 `dsh.profile.bundles`（如 `github:kw78/dsh-office-tools`）即可，它自带的 `enablePptTools` 保持默认 `true`。缺席时（例如 headless 只挂 dsh-ppt）没有文档车道，启动诊断会如实写一行 `office document lane not mounted`，不会把缺席当故障；只挂了一半时写 `partial (n/7; missing …)` 并在日志里点名缺失项。
+
+车道边界：`ppt_read` 返回的是**文字与几何**，不是渲染证据——视觉判断仍以 `ppt_image` 生成的 PNG 为准；`ppt_read` 也永远不能改文件。
+
+---
+
 ## 使用场景
 
 | 场景分类 | 提示词示例 |
@@ -428,7 +451,7 @@ ppt_outline(..., theme_id="carbon-blueprint", art_direction={...})
 
 ## 多 Agent 协作流程
 
-一份 PPT 也可以由多个 agent 分工完成：一个搜图、一个找材料、一个出框架（大纲 + Art Direction）、主 agent 整合并交付。插件只提供固定的 21 项工具与一套强校验的工件契约，分工由会话层编排。
+一份 PPT 也可以由多个 agent 分工完成：一个搜图、一个找材料、一个出框架（大纲 + Art Direction）、主 agent 整合并交付。插件只提供固定的 21 项核心工具（宿主挂载 `dsh-office-tools` 时再加 7 项 Office 文档工具）与一套强校验的工件契约，分工由会话层编排。
 
 - 🔍 **搜图 agent**：只往候选池写图片候选，不碰工件目录。搜索与落盘是两件事，冻结素材是主 agent 的活。
 - 📚 **材料 agent**：只写带来源的研究笔记与结构化数据点。
